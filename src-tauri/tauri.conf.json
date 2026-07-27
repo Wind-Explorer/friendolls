@@ -10,13 +10,6 @@
     "frontendDist": "../build"
   },
   "app": {
-    "windows": [
-      {
-        "title": "wyd",
-        "width": 800,
-        "height": 600
-      }
-    ],
     "security": {
       "csp": null
     }
