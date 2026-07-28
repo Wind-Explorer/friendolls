@@ -49,6 +49,6 @@ where
 pub fn init() {
     init_listener(|meta: AppMeta| {
         // TODO: Emit metadata to the app
-        println!("{:?}", meta);
+        println!("EVENT: FOREGROUND APP CHANGED\n({:?})", meta);
     });
 }

@@ -24,6 +24,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22.1"
 lazy_static = "1.5.0"
+ed25519-dalek = "3.0.0"
+getrandom = "0.4.3"
+device_query = "4.0.1"
+tokio = "1.53.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = "0.58"

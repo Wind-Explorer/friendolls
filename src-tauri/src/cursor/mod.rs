@@ -1,0 +1,221 @@
+use device_query::{DeviceEvents, DeviceEventsHandler};
+use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+use std::sync::RwLock;
+use std::time::Duration;
+use tauri::AppHandle;
+use tokio::sync::mpsc;
+use tokio::sync::watch;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorPosition {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorPositions {
+    pub raw: CursorPosition,
+    pub mapped: CursorPosition,
+}
+
+// Was private, but for some reason LSP
+// complains even when there's no external references.
+// Possibly because of `lazy_static!`.
+// Just leave it public I guess.
+pub struct CursorTask {
+    stop_tx: watch::Sender<bool>,
+    task: tauri::async_runtime::JoinHandle<()>,
+}
+
+lazy_static! {
+    pub static ref CURSOR_TASK: Mutex<Option<CursorTask>> = Mutex::new(None);
+    pub static ref CURSOR_POSITION: RwLock<CursorPositions> =
+        RwLock::new(CursorPositions::default());
+}
+
+/// Initialize cursor tracking.
+pub fn init(app: &AppHandle) {
+    println!("init_cursor_tracking called");
+
+    let mut tracker = match CURSOR_TASK.lock() {
+        Ok(tracker) => tracker,
+        Err(e) => {
+            println!("Failed to lock cursor tracker state: {}", e);
+            return;
+        }
+    };
+
+    if tracker.is_some() {
+        println!("Cursor tracking already initialized");
+        return;
+    }
+
+    let (stop_tx, stop_rx) = watch::channel(false);
+
+    println!("Spawning cursor tracking task");
+
+    let primary_monitor = app
+        .primary_monitor()
+        .expect("Failed to resolve primary monitor")
+        .expect("Failed to resolve primary monitor");
+
+    let task = tauri::async_runtime::spawn(async move {
+        if let Err(e) = init_cursor_tracking_i(stop_rx, primary_monitor).await {
+            println!("Failed to initialize cursor tracking: {}", e);
+        }
+    });
+
+    *tracker = Some(CursorTask { stop_tx, task });
+    println!("EVENT: Cursor Tracker Enabled");
+}
+
+#[inline]
+fn update_cursor_position(state: CursorPositions) {
+    let mut guard = CURSOR_POSITION
+        .write()
+        .expect("Cursor Position lock failed");
+
+    *guard = state.clone();
+
+    // TODO: Emit metadata to the app
+    println!("EVENT: CURSOR POSITION CHANGED\n({:?})", state);
+}
+
+/// Convert absolute to normalized coordinates (0.12, 0.78), or normalized to absolute (1234, 567)
+pub fn transform_cursor_pos(
+    pos: &CursorPosition,
+    to_normalized: bool,
+    monitor: &tauri::Monitor,
+) -> CursorPosition {
+    transform_coords(
+        pos,
+        to_normalized,
+        monitor.size().width as f64,
+        monitor.size().height as f64,
+    )
+}
+
+/// Core coordinate transformation, extracted for testability.
+/// `w` and `h` are the monitor dimensions in pixels.
+fn transform_coords(pos: &CursorPosition, to_normalized: bool, w: f64, h: f64) -> CursorPosition {
+    if to_normalized {
+        CursorPosition {
+            x: (pos.x / w).clamp(0.0, 1.0),
+            y: (pos.y / h).clamp(0.0, 1.0),
+        }
+    } else {
+        CursorPosition {
+            x: (pos.x * w).round(),
+            y: (pos.y * h).round(),
+        }
+    }
+}
+
+/// Stop cursor tracking and unregister all listeners.
+#[allow(dead_code)] // TODO: get rid of this when app teardown sequence is introduced.
+pub async fn stop_cursor_tracking() {
+    println!("stop_cursor_tracking called");
+
+    let tracker = match CURSOR_TASK.lock() {
+        Ok(mut tracker) => tracker.take(),
+        Err(e) => {
+            println!("Failed to lock cursor tracker state: {}", e);
+            return;
+        }
+    };
+
+    let Some(tracker) = tracker else {
+        println!("Cursor tracking is not running");
+        return;
+    };
+
+    if let Err(e) = tracker.stop_tx.send(true) {
+        println!("Failed to signal cursor tracking stop: {}", e);
+    }
+
+    if let Err(e) = tracker.task.await {
+        println!("Cursor tracking task join failed: {}", e);
+    }
+
+    println!("EVENT: Cursor Tracker Disabled");
+}
+
+async fn init_cursor_tracking_i(
+    mut stop_rx: watch::Receiver<bool>,
+    monitor: tauri::Monitor,
+) -> Result<(), String> {
+    println!("Initializing cursor tracking...");
+
+    // Create a channel to decouple event generation (producer) from processing (consumer).
+    // Capacity 100 is plenty for 500ms polling (2Hz).
+    let (tx, mut rx) = mpsc::channel::<CursorPositions>(100);
+
+    // Spawn the consumer task
+    // This task handles WebSocket reporting and local position projection updates.
+    // It runs independently of the device event loop.
+    tauri::async_runtime::spawn(async move {
+        println!("Cursor event consumer started");
+
+        while let Some(positions) = rx.recv().await {
+            update_cursor_position(positions);
+        }
+        println!("Cursor event consumer stopped (channel closed)");
+    });
+
+    let device_state = DeviceEventsHandler::new(Duration::from_millis(500))
+        .ok_or("Failed to create device event handler (already running?)")?;
+
+    println!("Device event handler created successfully");
+    println!("Setting up mouse move handler for event broadcasting...");
+
+    // #[cfg(target_os = "windows")]
+    let scale_factor = monitor.scale_factor();
+
+    // The producer closure moves `tx` into it.
+    // device_query runs this closure on its own thread.
+    let _guard = device_state.on_mouse_move(move |position: &(i32, i32)| {
+        // `device_query` crate appears to behave
+        // differently on Windows vs other platforms.
+        //
+        // It doesn't take into account the monitor scale
+        // factor on Windows, so we handle it manually.
+        #[cfg(target_os = "windows")]
+        let raw = CursorPosition {
+            x: position.0 as f64 / scale_factor,
+            y: position.1 as f64 / scale_factor,
+        };
+
+        // NOTE: Inclusion of scale factor was not necessary in the past, but now required. Confirm behaviours.
+        #[cfg(not(target_os = "windows"))]
+        let raw = CursorPosition {
+            x: position.0 as f64 * scale_factor,
+            y: position.1 as f64 * scale_factor,
+        };
+
+        let mapped = transform_cursor_pos(&raw, true, &monitor);
+
+        let positions = CursorPositions { raw, mapped };
+
+        // Send to consumer channel (non-blocking)
+        if let Err(e) = tx.try_send(positions) {
+            println!("Failed to send cursor position to channel: {:?}", e);
+        }
+    });
+
+    println!("Mouse move handler registered - now broadcasting cursor events to all windows");
+
+    // Keep the handler alive while tracking is enabled.
+    // This loop is necessary to keep `_guard` and `device_state` in scope.
+    while stop_rx.changed().await.is_ok() {
+        if *stop_rx.borrow() {
+            println!("Stopping cursor tracking event handler");
+            break;
+        }
+    }
+
+    Ok(())
+}
