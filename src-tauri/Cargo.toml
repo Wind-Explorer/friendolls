@@ -28,6 +28,7 @@ ed25519-dalek = "3.0.0"
 getrandom = "0.4.3"
 device_query = "4.0.1"
 tokio = "1.53.1"
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "migrate"] }
 tauri-specta = { version = "2.0.0-rc.21", features = ["derive", "typescript"] }
 specta = "2.0.0-rc.21"
 specta-typescript = { version = "0.0.9" }

@@ -5,7 +5,18 @@
 
 
 export const commands = {
-
+async createFriend(friend: Friend) : Promise<Friend> {
+    return await TAURI_INVOKE("create_friend", { friend });
+},
+async listFriends() : Promise<Friend[]> {
+    return await TAURI_INVOKE("list_friends");
+},
+async getFriend(id: string) : Promise<Friend | null> {
+    return await TAURI_INVOKE("get_friend", { id });
+},
+async deleteFriend(id: string) : Promise<boolean> {
+    return await TAURI_INVOKE("delete_friend", { id });
+}
 }
 
 /** user-defined events **/
@@ -18,7 +29,7 @@ export const commands = {
 
 /** user-defined types **/
 
-
+export type Friend = { id: string; displayName: string }
 
 /** tauri-specta globals **/
 
