@@ -23,7 +23,9 @@ pub fn run() {
             crate::friends::get_friend,
             crate::friends::delete_friend
         ])
-        .events(tauri_specta::collect_events![]);
+        .events(tauri_specta::collect_events![
+            crate::friends::FriendsChanged
+        ]);
 
     #[cfg(debug_assertions)]
     specta_builder
@@ -36,7 +38,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(specta_builder.invoke_handler())
-        .setup(|app| {
+        .setup(move |app| {
+            specta_builder.mount_events(app);
             tauri::async_runtime::block_on(launch_app(app))?;
             Ok(())
         })

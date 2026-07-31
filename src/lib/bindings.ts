@@ -22,6 +22,11 @@ async deleteFriend(id: string) : Promise<boolean> {
 /** user-defined events **/
 
 
+export const events = __makeEvents__<{
+friendsChanged: FriendsChanged
+}>({
+friendsChanged: "friends-changed"
+})
 
 /** user-defined constants **/
 
@@ -30,6 +35,7 @@ async deleteFriend(id: string) : Promise<boolean> {
 /** user-defined types **/
 
 export type Friend = { id: string; displayName: string }
+export type FriendsChanged = { friends: Friend[] }
 
 /** tauri-specta globals **/
 
