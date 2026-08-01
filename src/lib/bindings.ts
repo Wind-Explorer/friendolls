@@ -17,6 +17,21 @@ async getFriend(id: string) : Promise<Friend | null> {
 async deleteFriend(id: string) : Promise<boolean> {
     return await TAURI_INVOKE("delete_friend", { id });
 },
+async createRemote(remote: RemoteInput) : Promise<Remote> {
+    return await TAURI_INVOKE("create_remote", { remote });
+},
+async listRemotes() : Promise<Remote[]> {
+    return await TAURI_INVOKE("list_remotes");
+},
+async getRemote(id: string) : Promise<Remote | null> {
+    return await TAURI_INVOKE("get_remote", { id });
+},
+async updateRemote(id: string, remote: RemoteInput) : Promise<Remote | null> {
+    return await TAURI_INVOKE("update_remote", { id, remote });
+},
+async deleteRemote(id: string) : Promise<boolean> {
+    return await TAURI_INVOKE("delete_remote", { id });
+},
 async getPublicKey() : Promise<string> {
     return await TAURI_INVOKE("get_public_key");
 }
@@ -26,9 +41,11 @@ async getPublicKey() : Promise<string> {
 
 
 export const events = __makeEvents__<{
-friendsChanged: FriendsChanged
+friendsChanged: FriendsChanged,
+remotesChanged: RemotesChanged
 }>({
-friendsChanged: "friends-changed"
+friendsChanged: "friends-changed",
+remotesChanged: "remotes-changed"
 })
 
 /** user-defined constants **/
@@ -39,6 +56,9 @@ friendsChanged: "friends-changed"
 
 export type Friend = { id: string; displayName: string }
 export type FriendsChanged = { friends: Friend[] }
+export type Remote = { id: string; address: string; name: string | null; port: number | null }
+export type RemoteInput = { address: string; name: string | null; port: number | null }
+export type RemotesChanged = { remotes: Remote[] }
 
 /** tauri-specta globals **/
 

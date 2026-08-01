@@ -2,6 +2,7 @@ mod cursor;
 mod db;
 mod friends;
 mod keypair;
+mod remotes;
 mod ufa;
 mod windowing;
 
@@ -24,9 +25,17 @@ pub fn run() {
             friends::list_friends,
             friends::get_friend,
             friends::delete_friend,
+            remotes::create_remote,
+            remotes::list_remotes,
+            remotes::get_remote,
+            remotes::update_remote,
+            remotes::delete_remote,
             keypair::get_public_key,
         ])
-        .events(tauri_specta::collect_events![friends::FriendsChanged]);
+        .events(tauri_specta::collect_events![
+            friends::FriendsChanged,
+            remotes::RemotesChanged,
+        ]);
 
     #[cfg(debug_assertions)]
     specta_builder
