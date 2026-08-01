@@ -6,10 +6,10 @@ mod windowing;
 
 async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle();
-    crate::db::init(handle).await?;
-    crate::ufa::init();
-    crate::cursor::init(handle);
-    crate::windowing::init(handle);
+    db::init(handle).await?;
+    ufa::init();
+    cursor::init(handle);
+    windowing::init(handle);
     Ok(())
 }
 
@@ -18,14 +18,12 @@ pub fn run() {
     let specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         .commands(tauri_specta::collect_commands![
-            crate::friends::create_friend,
-            crate::friends::list_friends,
-            crate::friends::get_friend,
-            crate::friends::delete_friend
+            friends::create_friend,
+            friends::list_friends,
+            friends::get_friend,
+            friends::delete_friend
         ])
-        .events(tauri_specta::collect_events![
-            crate::friends::FriendsChanged
-        ]);
+        .events(tauri_specta::collect_events![friends::FriendsChanged]);
 
     #[cfg(debug_assertions)]
     specta_builder
