@@ -33,6 +33,9 @@ tauri-specta = { version = "2.0.0-rc.21", features = ["derive", "typescript"] }
 specta = "2.0.0-rc.21"
 specta-typescript = { version = "0.0.9" }
 
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = "0.58"
 

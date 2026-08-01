@@ -16,6 +16,9 @@ async getFriend(id: string) : Promise<Friend | null> {
 },
 async deleteFriend(id: string) : Promise<boolean> {
     return await TAURI_INVOKE("delete_friend", { id });
+},
+async getPublicKey() : Promise<string> {
+    return await TAURI_INVOKE("get_public_key");
 }
 }
 

@@ -1,12 +1,14 @@
 mod cursor;
 mod db;
 mod friends;
+mod keypair;
 mod ufa;
 mod windowing;
 
 async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle();
     db::init(handle).await?;
+    keypair::init(handle).await?;
     ufa::init();
     cursor::init(handle);
     windowing::init(handle);
@@ -21,7 +23,8 @@ pub fn run() {
             friends::create_friend,
             friends::list_friends,
             friends::get_friend,
-            friends::delete_friend
+            friends::delete_friend,
+            keypair::get_public_key,
         ])
         .events(tauri_specta::collect_events![friends::FriendsChanged]);
 
