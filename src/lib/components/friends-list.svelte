@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { commands, events, type Friend } from "$lib/bindings";
+  import { commands, events, type User } from "$lib/bindings";
 
-  let friends: Friend[] = [];
+  let friends: User[] = [];
   let error = "";
 
   onMount(() => {

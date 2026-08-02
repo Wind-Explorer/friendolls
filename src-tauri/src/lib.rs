@@ -2,8 +2,10 @@ mod cursor;
 mod db;
 mod friends;
 mod keypair;
+mod profile;
 mod remotes;
 mod ufa;
+mod user;
 mod windowing;
 
 async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -18,24 +20,7 @@ async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
-        .error_handling(tauri_specta::ErrorHandlingMode::Throw)
-        .commands(tauri_specta::collect_commands![
-            friends::create_friend,
-            friends::list_friends,
-            friends::get_friend,
-            friends::delete_friend,
-            remotes::create_remote,
-            remotes::list_remotes,
-            remotes::get_remote,
-            remotes::update_remote,
-            remotes::delete_remote,
-            keypair::get_public_key,
-        ])
-        .events(tauri_specta::collect_events![
-            friends::FriendsChanged,
-            remotes::RemotesChanged,
-        ]);
+    let specta_builder = specta_builder();
 
     #[cfg(debug_assertions)]
     specta_builder
@@ -56,4 +41,42 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|_, _| ());
+}
+
+fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .error_handling(tauri_specta::ErrorHandlingMode::Throw)
+        .commands(tauri_specta::collect_commands![
+            friends::create_friend,
+            friends::list_friends,
+            friends::get_friend,
+            friends::delete_friend,
+            remotes::create_remote,
+            remotes::list_remotes,
+            remotes::get_remote,
+            remotes::update_remote,
+            remotes::delete_remote,
+            profile::get_profile,
+            profile::update_profile,
+            keypair::get_public_key,
+        ])
+        .events(tauri_specta::collect_events![
+            friends::FriendsChanged,
+            remotes::RemotesChanged,
+            profile::ProfileChanged,
+        ])
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[ignore = "run explicitly to regenerate frontend bindings"]
+    fn export_typescript_bindings() {
+        super::specta_builder()
+            .export(
+                specta_typescript::Typescript::default(),
+                "../src/lib/bindings.ts",
+            )
+            .expect("export TypeScript bindings");
+    }
 }

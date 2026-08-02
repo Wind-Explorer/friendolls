@@ -1,24 +1,18 @@
 use crate::db::{self, AppDatabase};
+use crate::user::User;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, sqlx::FromRow)]
-#[serde(rename_all = "camelCase")]
-pub struct Friend {
-    pub id: String,
-    pub display_name: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
 #[serde(rename_all = "camelCase")]
 pub struct FriendsChanged {
-    pub friends: Vec<Friend>,
+    pub friends: Vec<User>,
 }
 
-async fn all(database: &AppDatabase) -> Result<Vec<Friend>, sqlx::Error> {
-    sqlx::query_as::<_, Friend>(
+async fn all(database: &AppDatabase) -> Result<Vec<User>, sqlx::Error> {
+    sqlx::query_as::<_, User>(
         "SELECT id, display_name FROM friends ORDER BY display_name COLLATE NOCASE, id",
     )
     .fetch_all(database.pool())
@@ -38,8 +32,8 @@ async fn emit_changed(handle: &AppHandle, database: &AppDatabase) -> Result<(), 
 pub async fn create_friend(
     handle: AppHandle,
     database: State<'_, AppDatabase>,
-    friend: Friend,
-) -> Result<Friend, String> {
+    friend: User,
+) -> Result<User, String> {
     sqlx::query("INSERT INTO friends (id, display_name) VALUES (?1, ?2)")
         .bind(&friend.id)
         .bind(&friend.display_name)
@@ -57,7 +51,7 @@ pub async fn create_friend(
 pub async fn list_friends(
     handle: AppHandle,
     database: State<'_, AppDatabase>,
-) -> Result<Vec<Friend>, String> {
+) -> Result<Vec<User>, String> {
     let friends = all(&database).await.map_err(db::command_error)?;
 
     FriendsChanged {
@@ -74,8 +68,8 @@ pub async fn list_friends(
 pub async fn get_friend(
     database: State<'_, AppDatabase>,
     id: String,
-) -> Result<Option<Friend>, String> {
-    sqlx::query_as::<_, Friend>("SELECT id, display_name FROM friends WHERE id = ?1")
+) -> Result<Option<User>, String> {
+    sqlx::query_as::<_, User>("SELECT id, display_name FROM friends WHERE id = ?1")
         .bind(id)
         .fetch_optional(database.pool())
         .await

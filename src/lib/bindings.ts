@@ -5,13 +5,13 @@
 
 
 export const commands = {
-async createFriend(friend: Friend) : Promise<Friend> {
+async createFriend(friend: User) : Promise<User> {
     return await TAURI_INVOKE("create_friend", { friend });
 },
-async listFriends() : Promise<Friend[]> {
+async listFriends() : Promise<User[]> {
     return await TAURI_INVOKE("list_friends");
 },
-async getFriend(id: string) : Promise<Friend | null> {
+async getFriend(id: string) : Promise<User | null> {
     return await TAURI_INVOKE("get_friend", { id });
 },
 async deleteFriend(id: string) : Promise<boolean> {
@@ -32,6 +32,12 @@ async updateRemote(id: string, remote: RemoteInput) : Promise<Remote | null> {
 async deleteRemote(id: string) : Promise<boolean> {
     return await TAURI_INVOKE("delete_remote", { id });
 },
+async getProfile() : Promise<User> {
+    return await TAURI_INVOKE("get_profile");
+},
+async updateProfile(displayName: string) : Promise<User> {
+    return await TAURI_INVOKE("update_profile", { displayName });
+},
 async getPublicKey() : Promise<string> {
     return await TAURI_INVOKE("get_public_key");
 }
@@ -42,9 +48,11 @@ async getPublicKey() : Promise<string> {
 
 export const events = __makeEvents__<{
 friendsChanged: FriendsChanged,
+profileChanged: ProfileChanged,
 remotesChanged: RemotesChanged
 }>({
 friendsChanged: "friends-changed",
+profileChanged: "profile-changed",
 remotesChanged: "remotes-changed"
 })
 
@@ -54,11 +62,16 @@ remotesChanged: "remotes-changed"
 
 /** user-defined types **/
 
-export type Friend = { id: string; displayName: string }
-export type FriendsChanged = { friends: Friend[] }
+export type FriendsChanged = { friends: User[] }
+export type ProfileChanged = { profile: User }
 export type Remote = { id: string; address: string; name: string | null; port: number | null }
 export type RemoteInput = { address: string; name: string | null; port: number | null }
 export type RemotesChanged = { remotes: Remote[] }
+/**
+ * Public user identity exchanged with peers and remote servers. `id` is the
+ * user's Ed25519 public key and is not persisted as local profile metadata.
+ */
+export type User = { id: string; displayName: string }
 
 /** tauri-specta globals **/
 
