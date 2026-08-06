@@ -2,6 +2,7 @@ mod cursor;
 mod db;
 mod friends;
 mod keypair;
+mod network;
 mod profile;
 mod remotes;
 mod ufa;
@@ -12,6 +13,7 @@ async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     let handle = app.handle();
     db::init(handle).await?;
     keypair::init(handle).await?;
+    network::init(handle).await?;
     ufa::init();
     cursor::init(handle);
     windowing::init(handle);

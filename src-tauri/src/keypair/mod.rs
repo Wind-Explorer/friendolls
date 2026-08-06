@@ -114,7 +114,7 @@ impl StoredKeypair {
     }
 }
 
-#[allow(dead_code)] // The signing key will be read by the pending WebSocket sender.
+#[derive(Clone)]
 pub struct AppKeypair {
     signing_key: SigningKey,
     public_key: String,

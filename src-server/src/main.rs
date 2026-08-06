@@ -1,5 +1,7 @@
 use axum::{Router, http::StatusCode, routing::get};
 
+mod network;
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
@@ -7,6 +9,7 @@ async fn main() -> std::io::Result<()> {
     let app = Router::new()
         .route("/", get("ok"))
         .route("/health", get("ok"))
+        .merge(network::routes())
         .fallback((StatusCode::NOT_FOUND, "not found"));
 
     println!("wyd-server listening on http://{bind_addr}");

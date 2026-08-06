@@ -14,7 +14,7 @@ pub struct ProfileChanged {
     pub profile: User,
 }
 
-async fn get(database: &AppDatabase, public_key: &str) -> Result<User, sqlx::Error> {
+pub async fn get(database: &AppDatabase, public_key: &str) -> Result<User, sqlx::Error> {
     let display_name =
         sqlx::query_scalar::<_, String>("SELECT display_name FROM profile WHERE id = ?1")
             .bind(PROFILE_ID)

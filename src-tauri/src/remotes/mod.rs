@@ -28,7 +28,7 @@ pub struct RemotesChanged {
     pub remotes: Vec<Remote>,
 }
 
-async fn all(database: &AppDatabase) -> Result<Vec<Remote>, sqlx::Error> {
+pub async fn all(database: &AppDatabase) -> Result<Vec<Remote>, sqlx::Error> {
     sqlx::query_as::<_, Remote>(
         "SELECT id, address, name, port FROM remotes \
          ORDER BY COALESCE(name, address) COLLATE NOCASE, id",
