@@ -40,6 +40,9 @@ async updateProfile(displayName: string) : Promise<User> {
 },
 async getPublicKey() : Promise<string> {
     return await TAURI_INVOKE("get_public_key");
+},
+async listStatuses() : Promise<ConnectionStatus[]> {
+    return await TAURI_INVOKE("list_statuses");
 }
 }
 
@@ -48,10 +51,12 @@ async getPublicKey() : Promise<string> {
 
 export const events = __makeEvents__<{
 friendsChanged: FriendsChanged,
+networkStatusChanged: NetworkStatusChanged,
 profileChanged: ProfileChanged,
 remotesChanged: RemotesChanged
 }>({
 friendsChanged: "friends-changed",
+networkStatusChanged: "network-status-changed",
 profileChanged: "profile-changed",
 remotesChanged: "remotes-changed"
 })
@@ -62,7 +67,10 @@ remotesChanged: "remotes-changed"
 
 /** user-defined types **/
 
+export type ConnectionState = "connecting" | "connected" | "disconnected"
+export type ConnectionStatus = { remoteId: string; address: string; name: string | null; state: ConnectionState }
 export type FriendsChanged = { friends: User[] }
+export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
 export type ProfileChanged = { profile: User }
 export type Remote = { id: string; address: string; name: string | null; port: number | null }
 export type RemoteInput = { address: string; name: string | null; port: number | null }

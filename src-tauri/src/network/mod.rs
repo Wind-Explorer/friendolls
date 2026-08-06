@@ -1,9 +1,12 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use tauri::{AppHandle, Manager};
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use tauri::{AppHandle, Manager, State};
+use tauri_specta::Event;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 use wyd_common::{ClientMessage, Profile, ServerMessage, message_bytes, register_bytes};
@@ -12,8 +15,34 @@ use crate::db::AppDatabase;
 use crate::keypair::AppKeypair;
 use crate::remotes::{self, Remote};
 
+type Statuses = Arc<Mutex<HashMap<String, ConnectionStatus>>>;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum ConnectionState {
+    Connecting,
+    Connected,
+    Disconnected,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionStatus {
+    pub remote_id: String,
+    pub address: String,
+    pub name: Option<String>,
+    pub state: ConnectionState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkStatusChanged {
+    pub statuses: Vec<ConnectionStatus>,
+}
+
 pub struct Network {
     senders: Mutex<HashMap<String, mpsc::Sender<String>>>,
+    statuses: Statuses,
 }
 
 impl Network {
@@ -35,34 +64,59 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     let profile = crate::profile::get(&database, keypair.public_key()).await?;
     let remotes = remotes::all(&database).await?;
     let mut senders = HashMap::new();
+    let statuses = Statuses::default();
 
     for remote in remotes {
         let (sender, receiver) = mpsc::channel(32);
         senders.insert(remote.id.clone(), sender);
-        tauri::async_runtime::spawn(run(remote, profile.clone(), keypair.clone(), receiver));
+        set(&statuses, &remote, ConnectionState::Connecting);
+        tauri::async_runtime::spawn(run(
+            handle.clone(),
+            statuses.clone(),
+            remote,
+            profile.clone(),
+            keypair.clone(),
+            receiver,
+        ));
     }
 
     handle.manage(Network {
         senders: Mutex::new(senders),
+        statuses,
     });
     Ok(())
 }
 
 async fn run(
+    handle: AppHandle,
+    statuses: Statuses,
     remote: Remote,
     profile: crate::user::User,
     keypair: AppKeypair,
     mut outgoing: mpsc::Receiver<String>,
 ) {
     loop {
-        if let Err(error) = connect(&remote, &profile, &keypair, &mut outgoing).await {
+        changed(&handle, &statuses, &remote, ConnectionState::Connecting);
+        if let Err(error) = connect(
+            &handle,
+            &statuses,
+            &remote,
+            &profile,
+            &keypair,
+            &mut outgoing,
+        )
+        .await
+        {
             eprintln!("remote {} disconnected: {error}", remote.id);
         }
+        changed(&handle, &statuses, &remote, ConnectionState::Disconnected);
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
 
 async fn connect(
+    handle: &AppHandle,
+    statuses: &Statuses,
     remote: &Remote,
     profile: &crate::user::User,
     keypair: &AppKeypair,
@@ -93,6 +147,7 @@ async fn connect(
     if !matches!(recv(&mut reader).await?, ServerMessage::Registered) {
         return Err("server rejected registration".into());
     }
+    changed(handle, statuses, remote, ConnectionState::Connected);
 
     loop {
         tokio::select! {
@@ -110,6 +165,53 @@ async fn connect(
             }
         }
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_statuses(
+    handle: AppHandle,
+    network: State<'_, Network>,
+) -> Result<Vec<ConnectionStatus>, String> {
+    let statuses = snapshot(&network.statuses)?;
+    NetworkStatusChanged {
+        statuses: statuses.clone(),
+    }
+    .emit(&handle)
+    .map_err(|error| error.to_string())?;
+    Ok(statuses)
+}
+
+fn changed(handle: &AppHandle, statuses: &Statuses, remote: &Remote, state: ConnectionState) {
+    set(statuses, remote, state);
+    if let Ok(statuses) = snapshot(statuses) {
+        let _ = NetworkStatusChanged { statuses }.emit(handle);
+    }
+}
+
+fn set(statuses: &Statuses, remote: &Remote, state: ConnectionState) {
+    if let Ok(mut statuses) = statuses.lock() {
+        statuses.insert(
+            remote.id.clone(),
+            ConnectionStatus {
+                remote_id: remote.id.clone(),
+                address: remote.address.clone(),
+                name: remote.name.clone(),
+                state,
+            },
+        );
+    }
+}
+
+fn snapshot(statuses: &Statuses) -> Result<Vec<ConnectionStatus>, String> {
+    let mut statuses: Vec<_> = statuses
+        .lock()
+        .map_err(|error| error.to_string())?
+        .values()
+        .cloned()
+        .collect();
+    statuses.sort_by(|a, b| a.remote_id.cmp(&b.remote_id));
+    Ok(statuses)
 }
 
 async fn send<S>(

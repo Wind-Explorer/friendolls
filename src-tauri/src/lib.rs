@@ -61,11 +61,13 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             profile::get_profile,
             profile::update_profile,
             keypair::get_public_key,
+            network::list_statuses,
         ])
         .events(tauri_specta::collect_events![
             friends::FriendsChanged,
             remotes::RemotesChanged,
             profile::ProfileChanged,
+            network::NetworkStatusChanged,
         ])
 }
 
