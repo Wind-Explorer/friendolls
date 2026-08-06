@@ -3,6 +3,7 @@
   import ConnectionStatus from "$lib/components/connection-status.svelte";
   import Profile from "$lib/components/profile.svelte";
   import RemotesList from "$lib/components/remotes-list.svelte";
+  import LiveMetadata from "$lib/components/live-metadata.svelte";
 </script>
 
 <main>
@@ -17,5 +18,8 @@
   </div>
   <div>
     <ConnectionStatus />
+  </div>
+  <div>
+    <LiveMetadata />
   </div>
 </main>

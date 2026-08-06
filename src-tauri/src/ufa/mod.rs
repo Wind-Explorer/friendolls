@@ -2,6 +2,9 @@
 UFA: User Focused App
 */
 
+use std::sync::RwLock;
+use tauri::{AppHandle, Manager};
+use tauri_specta::Event;
 pub use types::*;
 mod icon_cache;
 #[cfg(target_os = "macos")]
@@ -9,6 +12,15 @@ mod macos;
 mod types;
 #[cfg(target_os = "windows")]
 mod windows;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct ForegroundAppChanged {
+    pub meta: AppMeta,
+}
+
+#[derive(Default)]
+pub struct ForegroundAppState(RwLock<AppMeta>);
 
 /// Listens for changes in the active (foreground) application and calls the provided callback with metadata.
 /// The implementation varies by platform: macOS uses NSWorkspace notifications, Windows uses WinEventHook.
@@ -46,9 +58,17 @@ where
 /// Initializes the foreground app change listener
 /// and emits events to the Tauri app on changes.
 /// Used for app to emit user foreground app to peers.
-pub fn init() {
-    init_listener(|meta: AppMeta| {
-        // TODO: Emit metadata to the app
-        println!("EVENT: FOREGROUND APP CHANGED\n({:?})", meta);
+pub fn init(handle: &AppHandle) {
+    let handle = handle.clone();
+
+    init_listener(move |meta: AppMeta| {
+        let state = handle.state::<ForegroundAppState>();
+        let mut current = state.0.write().expect("Foreground App lock failed");
+        *current = meta.clone();
+        drop(current);
+
+        if let Err(error) = (ForegroundAppChanged { meta }).emit(&handle) {
+            eprintln!("Failed to emit foreground app change: {error}");
+        }
     });
 }

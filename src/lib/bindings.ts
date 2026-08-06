@@ -50,11 +50,15 @@ async listStatuses() : Promise<ConnectionStatus[]> {
 
 
 export const events = __makeEvents__<{
+cursorPositionChanged: CursorPositionChanged,
+foregroundAppChanged: ForegroundAppChanged,
 friendsChanged: FriendsChanged,
 networkStatusChanged: NetworkStatusChanged,
 profileChanged: ProfileChanged,
 remotesChanged: RemotesChanged
 }>({
+cursorPositionChanged: "cursor-position-changed",
+foregroundAppChanged: "foreground-app-changed",
 friendsChanged: "friends-changed",
 networkStatusChanged: "network-status-changed",
 profileChanged: "profile-changed",
@@ -67,8 +71,16 @@ remotesChanged: "remotes-changed"
 
 /** user-defined types **/
 
+/**
+ * Metadata for the currently active application, including localized and unlocalized names, and an optional base64-encoded icon.
+ */
+export type AppMeta = { local: string | null; unlocal: string | null; ico: string | null }
 export type ConnectionState = "connecting" | "connected" | "disconnected"
 export type ConnectionStatus = { remoteId: string; address: string; name: string | null; state: ConnectionState }
+export type CursorPosition = { x: number; y: number }
+export type CursorPositionChanged = { positions: CursorPositions }
+export type CursorPositions = { raw: CursorPosition; mapped: CursorPosition }
+export type ForegroundAppChanged = { meta: AppMeta }
 export type FriendsChanged = { friends: User[] }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
 export type ProfileChanged = { profile: User }

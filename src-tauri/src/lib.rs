@@ -9,12 +9,16 @@ mod ufa;
 mod user;
 mod windowing;
 
+use tauri::Manager;
+
 async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle();
     db::init(handle).await?;
     keypair::init(handle).await?;
     network::init(handle).await?;
-    ufa::init();
+    app.manage(ufa::ForegroundAppState::default());
+    app.manage(cursor::CursorState::default());
+    ufa::init(handle);
     cursor::init(handle);
     windowing::init(handle);
     Ok(())
@@ -68,6 +72,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             remotes::RemotesChanged,
             profile::ProfileChanged,
             network::NetworkStatusChanged,
+            cursor::CursorPositionChanged,
+            ufa::ForegroundAppChanged,
         ])
 }
 

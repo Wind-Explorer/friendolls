@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 pub const ICON_SIZE: u32 = 64;
 pub const ICON_CACHE_LIMIT: usize = 50;
@@ -10,7 +11,7 @@ pub const ICON_CACHE_LIMIT: usize = 50;
 pub const MAX_ICON_B64_SIZE: usize = 50_000;
 
 /// Metadata for the currently active application, including localized and unlocalized names, and an optional base64-encoded icon.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AppMeta {
     pub local: Option<String>,

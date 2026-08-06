@@ -1,26 +1,37 @@
 use device_query::{DeviceEvents, DeviceEventsHandler};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::sync::Mutex;
 use std::sync::RwLock;
 use std::time::Duration;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
+use tauri_specta::Event;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorPosition {
     pub x: f64,
     pub y: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorPositions {
     pub raw: CursorPosition,
     pub mapped: CursorPosition,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorPositionChanged {
+    pub positions: CursorPositions,
+}
+
+#[derive(Default)]
+pub struct CursorState(RwLock<CursorPositions>);
 
 // Was private, but for some reason LSP
 // complains even when there's no external references.
@@ -33,8 +44,6 @@ pub struct CursorTask {
 
 lazy_static! {
     pub static ref CURSOR_TASK: Mutex<Option<CursorTask>> = Mutex::new(None);
-    pub static ref CURSOR_POSITION: RwLock<CursorPositions> =
-        RwLock::new(CursorPositions::default());
 }
 
 /// Initialize cursor tracking.
@@ -63,8 +72,9 @@ pub fn init(app: &AppHandle) {
         .expect("Failed to resolve primary monitor")
         .expect("Failed to resolve primary monitor");
 
+    let handle = app.clone();
     let task = tauri::async_runtime::spawn(async move {
-        if let Err(e) = init_cursor_tracking_i(stop_rx, primary_monitor).await {
+        if let Err(e) = init_cursor_tracking_i(stop_rx, primary_monitor, handle).await {
             println!("Failed to initialize cursor tracking: {}", e);
         }
     });
@@ -74,15 +84,16 @@ pub fn init(app: &AppHandle) {
 }
 
 #[inline]
-fn update_cursor_position(state: CursorPositions) {
-    let mut guard = CURSOR_POSITION
-        .write()
-        .expect("Cursor Position lock failed");
+fn update_cursor_position(handle: &AppHandle, positions: CursorPositions) {
+    let state = handle.state::<CursorState>();
+    let mut guard = state.0.write().expect("Cursor Position lock failed");
 
-    *guard = state.clone();
+    *guard = positions.clone();
+    drop(guard);
 
-    // TODO: Emit metadata to the app
-    println!("EVENT: CURSOR POSITION CHANGED\n({:?})", state);
+    if let Err(error) = (CursorPositionChanged { positions }).emit(handle) {
+        eprintln!("Failed to emit cursor position change: {error}");
+    }
 }
 
 /// Convert absolute to normalized coordinates (0.12, 0.78), or normalized to absolute (1234, 567)
@@ -147,6 +158,7 @@ pub async fn stop_cursor_tracking() {
 async fn init_cursor_tracking_i(
     mut stop_rx: watch::Receiver<bool>,
     monitor: tauri::Monitor,
+    handle: AppHandle,
 ) -> Result<(), String> {
     println!("Initializing cursor tracking...");
 
@@ -161,7 +173,7 @@ async fn init_cursor_tracking_i(
         println!("Cursor event consumer started");
 
         while let Some(positions) = rx.recv().await {
-            update_cursor_position(positions);
+            update_cursor_position(&handle, positions);
         }
         println!("Cursor event consumer stopped (channel closed)");
     });
