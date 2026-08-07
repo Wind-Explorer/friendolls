@@ -1,5 +1,6 @@
 use crate::db::{self, AppDatabase};
 use crate::keypair::AppKeypair;
+use crate::network::Network;
 use crate::user::User;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -71,11 +72,13 @@ pub async fn update_profile(
     handle: AppHandle,
     database: State<'_, AppDatabase>,
     keypair: State<'_, AppKeypair>,
+    network: State<'_, Network>,
     display_name: String,
 ) -> Result<User, String> {
     let profile = update(&database, keypair.public_key(), display_name)
         .await
         .map_err(db::command_error)?;
+    network.update_profile(profile.clone());
     emit_changed(&handle, profile.clone())?;
     Ok(profile)
 }

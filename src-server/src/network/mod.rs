@@ -13,7 +13,9 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
-use wyd_common::{ClientMessage, Profile, ServerMessage, message_bytes, register_bytes};
+use wyd_common::{
+    ClientMessage, Profile, ServerMessage, message_bytes, profile_bytes, register_bytes,
+};
 
 type Clients = Arc<Mutex<HashMap<String, Client>>>;
 
@@ -91,14 +93,21 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
                 if writer.send(Message::Ping(Vec::new().into())).await.is_err() { break; }
             }
             message = reader.next() => match message {
-                Some(Ok(Message::Text(text))) => {
-                    let Ok(ClientMessage::Signed { payload, signature }) = serde_json::from_str(&text) else { break };
-                    let registered_key = clients.lock().await.get(&public_key)
-                        .filter(|client| client.connection_id == connection_id)
-                        .map(|client| client.key);
-                    let Some(registered_key) = registered_key else { break };
-                    if !verify(&registered_key, &message_bytes(&payload), &signature) { break; }
-                    // The message is authenticated. Domain routing comes next.
+                Some(Ok(Message::Text(text))) => match serde_json::from_str(&text) {
+                    Ok(ClientMessage::Signed { payload, signature }) => {
+                        let registered_key = clients.lock().await.get(&public_key)
+                            .filter(|client| client.connection_id == connection_id)
+                            .map(|client| client.key);
+                        let Some(registered_key) = registered_key else { break };
+                        if !verify(&registered_key, &message_bytes(&payload), &signature) { break; }
+                        // The message is authenticated. Domain routing comes next.
+                    }
+                    Ok(ClientMessage::ProfileUpdated { profile, signature }) => {
+                        if !update_profile(&clients, &public_key, connection_id, profile, &signature).await {
+                            break;
+                        }
+                    }
+                    _ => break,
                 }
                 Some(Ok(Message::Ping(data))) => {
                     if writer.send(Message::Pong(data)).await.is_err() { break; }
@@ -110,6 +119,27 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
     }
 
     remove(&clients, &public_key, connection_id).await;
+}
+
+async fn update_profile(
+    clients: &Clients,
+    public_key: &str,
+    connection_id: Uuid,
+    profile: Profile,
+    signature: &str,
+) -> bool {
+    let mut clients = clients.lock().await;
+    let Some(client) = clients
+        .get_mut(public_key)
+        .filter(|client| client.connection_id == connection_id)
+    else {
+        return false;
+    };
+    if profile.id != public_key || !verify(&client.key, &profile_bytes(&profile), signature) {
+        return false;
+    }
+    client.profile = profile;
+    true
 }
 
 async fn remove(clients: &Clients, public_key: &str, connection_id: Uuid) {
@@ -181,5 +211,44 @@ mod tests {
             &message_bytes("tampered"),
             &signature,
         ));
+    }
+
+    #[tokio::test]
+    async fn authenticated_profile_update_changes_the_registered_client() {
+        let signing_key = SigningKey::from_bytes(&[7; 32]);
+        let public_key = URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes());
+        let connection_id = Uuid::new_v4();
+        let (sender, _receiver) = mpsc::channel(1);
+        let clients = Clients::default();
+        clients.lock().await.insert(
+            public_key.clone(),
+            Client {
+                connection_id,
+                key: signing_key.verifying_key(),
+                profile: Profile {
+                    id: public_key.clone(),
+                    display_name: "Old".to_owned(),
+                },
+                sender,
+            },
+        );
+        let profile = Profile {
+            id: public_key.clone(),
+            display_name: "New".to_owned(),
+        };
+        let signature =
+            URL_SAFE_NO_PAD.encode(signing_key.sign(&profile_bytes(&profile)).to_bytes());
+
+        assert!(update_profile(&clients, &public_key, connection_id, profile, &signature).await);
+        assert_eq!(
+            clients
+                .lock()
+                .await
+                .get(&public_key)
+                .unwrap()
+                .profile
+                .display_name,
+            "New"
+        );
     }
 }

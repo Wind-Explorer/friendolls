@@ -7,9 +7,11 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::tungstenite::Message;
-use wyd_common::{ClientMessage, Profile, ServerMessage, message_bytes, register_bytes};
+use wyd_common::{
+    ClientMessage, Profile, ServerMessage, message_bytes, profile_bytes, register_bytes,
+};
 
 use crate::db::AppDatabase;
 use crate::keypair::AppKeypair;
@@ -43,6 +45,7 @@ pub struct NetworkStatusChanged {
 pub struct Network {
     senders: Mutex<HashMap<String, mpsc::Sender<String>>>,
     statuses: Statuses,
+    profile: watch::Sender<crate::user::User>,
 }
 
 impl Network {
@@ -56,12 +59,17 @@ impl Network {
             .try_send(payload)
             .map_err(|error| format!("remote is not ready: {error}"))
     }
+
+    pub fn update_profile(&self, profile: crate::user::User) {
+        self.profile.send_replace(profile);
+    }
 }
 
 pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let database = handle.state::<AppDatabase>();
     let keypair = handle.state::<AppKeypair>().inner().clone();
     let profile = crate::profile::get(&database, keypair.public_key()).await?;
+    let (profile_sender, profile_receiver) = watch::channel(profile);
     let remotes = remotes::all(&database).await?;
     let mut senders = HashMap::new();
     let statuses = Statuses::default();
@@ -74,7 +82,7 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             handle.clone(),
             statuses.clone(),
             remote,
-            profile.clone(),
+            profile_receiver.clone(),
             keypair.clone(),
             receiver,
         ));
@@ -83,6 +91,7 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     handle.manage(Network {
         senders: Mutex::new(senders),
         statuses,
+        profile: profile_sender,
     });
     Ok(())
 }
@@ -91,7 +100,7 @@ async fn run(
     handle: AppHandle,
     statuses: Statuses,
     remote: Remote,
-    profile: crate::user::User,
+    mut profiles: watch::Receiver<crate::user::User>,
     keypair: AppKeypair,
     mut outgoing: mpsc::Receiver<String>,
 ) {
@@ -101,7 +110,7 @@ async fn run(
             &handle,
             &statuses,
             &remote,
-            &profile,
+            &mut profiles,
             &keypair,
             &mut outgoing,
         )
@@ -118,7 +127,7 @@ async fn connect(
     handle: &AppHandle,
     statuses: &Statuses,
     remote: &Remote,
-    profile: &crate::user::User,
+    profiles: &mut watch::Receiver<crate::user::User>,
     keypair: &AppKeypair,
     outgoing: &mut mpsc::Receiver<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -131,15 +140,16 @@ async fn connect(
         }
         _ => return Err("server did not send a compatible challenge".into()),
     };
-    let profile = Profile {
-        id: profile.id.clone(),
-        display_name: profile.display_name.clone(),
+    let current = profiles.borrow_and_update().clone();
+    let registration_profile = Profile {
+        id: current.id,
+        display_name: current.display_name,
     };
     send(
         &mut writer,
         &ClientMessage::Register {
-            signature: keypair.sign(&register_bytes(&challenge, &profile)),
-            profile,
+            signature: keypair.sign(&register_bytes(&challenge, &registration_profile)),
+            profile: registration_profile,
         },
     )
     .await?;
@@ -156,6 +166,18 @@ async fn connect(
                 send(&mut writer, &ClientMessage::Signed {
                     signature: keypair.sign(&message_bytes(&payload)),
                     payload,
+                }).await?;
+            }
+            changed = profiles.changed() => {
+                changed.map_err(|_| "profile sender closed")?;
+                let current = profiles.borrow_and_update().clone();
+                let profile = Profile {
+                    id: current.id,
+                    display_name: current.display_name,
+                };
+                send(&mut writer, &ClientMessage::ProfileUpdated {
+                    signature: keypair.sign(&profile_bytes(&profile)),
+                    profile,
                 }).await?;
             }
             message = reader.next() => match message.ok_or("server closed the socket")?? {
