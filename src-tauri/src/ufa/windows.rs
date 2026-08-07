@@ -1,10 +1,9 @@
-use super::types::AppMetadata;
+use super::types::AppMeta;
 use std::ffi::OsString;
 use std::iter;
 use std::os::windows::ffi::OsStringExt;
 use std::path::Path;
 use std::ptr;
-use tracing::{info, warn};
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Globalization::GetUserDefaultLangID;
@@ -18,7 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 pub fn listen_for_active_app_changes<F>(callback: F)
 where
-    F: Fn(AppMetadata) + Send + 'static,
+    F: Fn(AppMeta) + Send + 'static,
 {
     // Run the hook on a background thread so we don't block the caller.
     std::thread::spawn(move || unsafe {
@@ -52,7 +51,7 @@ where
 // RefCell is safe here because the callback is stored and accessed only within the dedicated event loop thread.
 // No concurrent access occurs since WinEventHook runs on a single background thread.
 thread_local! {
-    static CALLBACK: std::cell::RefCell<Option<Box<dyn Fn(AppMetadata) + Send + 'static>>> =
+    static CALLBACK: std::cell::RefCell<Option<Box<dyn Fn(AppMeta) + Send + 'static>>> =
         std::cell::RefCell::new(None);
 }
 
@@ -76,35 +75,35 @@ unsafe extern "system" fn win_event_proc<F>(
 }
 
 /// Retrieves metadata for the active application on Windows, optionally using a provided window handle.
-pub fn get_active_app_metadata_windows(hwnd_override: Option<HWND>) -> AppMetadata {
+pub fn get_active_app_metadata_windows(hwnd_override: Option<HWND>) -> AppMeta {
     unsafe {
         let hwnd = hwnd_override.unwrap_or_else(|| GetForegroundWindow());
         if hwnd.0 == std::ptr::null_mut() {
-            warn!("No foreground window found");
-            return AppMetadata {
-                localized: None,
-                unlocalized: None,
-                app_icon_b64: None,
+            eprintln!("No foreground window found");
+            return AppMeta {
+                local: None,
+                unlocal: None,
+                ico: None,
             };
         }
         let mut pid: u32 = 0;
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
         if pid == 0 {
-            warn!("Failed to get process ID for foreground window");
-            return AppMetadata {
-                localized: None,
-                unlocalized: None,
-                app_icon_b64: None,
+            eprintln!("Failed to get process ID for foreground window");
+            return AppMeta {
+                local: None,
+                unlocal: None,
+                ico: None,
             };
         }
         let process_handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
             Ok(h) if !h.is_invalid() => h,
             _ => {
-                warn!("Failed to open process {} for querying", pid);
-                return AppMetadata {
-                    localized: None,
-                    unlocalized: None,
-                    app_icon_b64: None,
+                eprintln!("Failed to open process {} for querying", pid);
+                return AppMeta {
+                    local: None,
+                    unlocal: None,
+                    ico: None,
                 };
             }
         };
@@ -114,11 +113,11 @@ pub fn get_active_app_metadata_windows(hwnd_override: Option<HWND>) -> AppMetada
         let exe_path = if size > 0 {
             OsString::from_wide(&buffer[..size as usize])
         } else {
-            warn!("Failed to get module file name for process {}", pid);
-            return AppMetadata {
-                localized: None,
-                unlocalized: None,
-                app_icon_b64: None,
+            eprintln!("Failed to get module file name for process {}", pid);
+            return AppMeta {
+                local: None,
+                unlocal: None,
+                ico: None,
             };
         };
         let exe_path_str = exe_path.to_string_lossy();
@@ -143,10 +142,10 @@ pub fn get_active_app_metadata_windows(hwnd_override: Option<HWND>) -> AppMetada
 
         let app_icon_b64 = get_active_app_icon_b64(&exe_path_str);
 
-        AppMetadata {
-            localized,
-            unlocalized,
-            app_icon_b64,
+        AppMeta {
+            local: localized,
+            unlocal: unlocalized,
+            ico: app_icon_b64,
         }
     }
 }
@@ -281,7 +280,7 @@ struct IconHandle(windows::Win32::UI::WindowsAndMessaging::HICON);
 impl Drop for IconHandle {
     fn drop(&mut self) {
         unsafe {
-            windows::Win32::UI::WindowsAndMessaging::DestroyIcon(self.0);
+            let _ = windows::Win32::UI::WindowsAndMessaging::DestroyIcon(self.0);
         }
     }
 }
@@ -316,7 +315,7 @@ fn get_active_app_icon_b64(exe_path: &str) -> Option<String> {
         );
 
         if result == 0 || file_info.hIcon.is_invalid() {
-            warn!("Failed to get icon for {}", exe_path);
+            eprintln!("Failed to get icon for {}", exe_path);
             return None;
         }
 
@@ -325,7 +324,7 @@ fn get_active_app_icon_b64(exe_path: &str) -> Option<String> {
         // Get icon info to extract bitmap
         let mut icon_info: ICONINFO = std::mem::zeroed();
         if GetIconInfo(icon_handle.0, &mut icon_info).is_err() {
-            warn!("Failed to get icon info for {}", exe_path);
+            eprintln!("Failed to get icon info for {}", exe_path);
             return None;
         }
 
@@ -339,12 +338,9 @@ fn get_active_app_icon_b64(exe_path: &str) -> Option<String> {
         {
             let _ = DeleteObject(icon_info.hbmColor);
             let _ = DeleteObject(icon_info.hbmMask);
-            warn!("Failed to get bitmap object for {}", exe_path);
+            eprintln!("Failed to get bitmap object for {}", exe_path);
             return None;
         }
-
-        let width = bitmap.bmWidth;
-        let height = bitmap.bmHeight;
 
         // Create device contexts
         let hdc_screen = windows::Win32::Graphics::Gdi::GetDC(HWND(ptr::null_mut()));
@@ -402,7 +398,7 @@ fn get_active_app_icon_b64(exe_path: &str) -> Option<String> {
         let _ = DeleteObject(icon_info.hbmMask);
 
         if result == 0 {
-            warn!("Failed to get bitmap bits for {}", exe_path);
+            eprintln!("Failed to get bitmap bits for {}", exe_path);
             return None;
         }
 
@@ -419,7 +415,7 @@ fn get_active_app_icon_b64(exe_path: &str) -> Option<String> {
         ) {
             Some(img) => img,
             None => {
-                warn!("Failed to create image from buffer for {}", exe_path);
+                eprintln!("Failed to create image from buffer for {}", exe_path);
                 return None;
             }
         };
@@ -429,13 +425,13 @@ fn get_active_app_icon_b64(exe_path: &str) -> Option<String> {
             &mut std::io::Cursor::new(&mut png_buffer),
             image::ImageFormat::Png,
         ) {
-            warn!("Failed to encode PNG for {}: {}", exe_path, e);
+            eprintln!("Failed to encode PNG for {}: {}", exe_path, e);
             return None;
         }
 
         let encoded = STANDARD.encode(&png_buffer);
 
-        info!(
+        println!(
             "App icon captured: {}, PNG bytes: {}, base64 size: {} bytes",
             exe_path,
             png_buffer.len(),
@@ -443,7 +439,7 @@ fn get_active_app_icon_b64(exe_path: &str) -> Option<String> {
         );
 
         if encoded.len() > super::types::MAX_ICON_B64_SIZE {
-            warn!(
+            eprintln!(
                 "Icon for {} exceeds size limit ({} > {} bytes), skipping",
                 exe_path,
                 encoded.len(),

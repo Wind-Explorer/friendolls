@@ -184,24 +184,18 @@ async fn init_cursor_tracking_i(
     println!("Device event handler created successfully");
     println!("Setting up mouse move handler for event broadcasting...");
 
-    // #[cfg(target_os = "windows")]
+    #[cfg(not(target_os = "windows"))]
     let scale_factor = monitor.scale_factor();
 
     // The producer closure moves `tx` into it.
     // device_query runs this closure on its own thread.
     let _guard = device_state.on_mouse_move(move |position: &(i32, i32)| {
-        // `device_query` crate appears to behave
-        // differently on Windows vs other platforms.
-        //
-        // It doesn't take into account the monitor scale
-        // factor on Windows, so we handle it manually.
         #[cfg(target_os = "windows")]
         let raw = CursorPosition {
-            x: position.0 as f64 / scale_factor,
-            y: position.1 as f64 / scale_factor,
+            x: position.0 as f64,
+            y: position.1 as f64,
         };
 
-        // NOTE: Inclusion of scale factor was not necessary in the past, but now required. Confirm behaviours.
         #[cfg(not(target_os = "windows"))]
         let raw = CursorPosition {
             x: position.0 as f64 * scale_factor,
