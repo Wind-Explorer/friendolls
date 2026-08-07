@@ -11,7 +11,7 @@ pub struct FriendsChanged {
     pub friends: Vec<User>,
 }
 
-async fn all(database: &AppDatabase) -> Result<Vec<User>, sqlx::Error> {
+pub(crate) async fn all(database: &AppDatabase) -> Result<Vec<User>, sqlx::Error> {
     sqlx::query_as::<_, User>(
         "SELECT id, display_name FROM friends ORDER BY display_name COLLATE NOCASE, id",
     )
@@ -25,6 +25,48 @@ async fn emit_changed(handle: &AppHandle, database: &AppDatabase) -> Result<(), 
     }
     .emit(handle)
     .map_err(db::command_error)
+}
+
+async fn update_display_names(
+    database: &AppDatabase,
+    profiles: &[wyd_common::Profile],
+) -> Result<bool, sqlx::Error> {
+    let mut transaction = database.pool().begin().await?;
+    let mut changed = false;
+    for profile in profiles {
+        let result = sqlx::query(
+            "UPDATE friends SET display_name = ?1 WHERE id = ?2 AND display_name != ?1",
+        )
+        .bind(&profile.display_name)
+        .bind(&profile.id)
+        .execute(&mut *transaction)
+        .await?;
+        changed |= result.rows_affected() > 0;
+    }
+    transaction.commit().await?;
+    Ok(changed)
+}
+
+pub(crate) async fn apply_profile_update(
+    handle: &AppHandle,
+    database: &AppDatabase,
+    profile: wyd_common::Profile,
+) -> Result<bool, String> {
+    apply_profile_sync(handle, database, vec![profile]).await
+}
+
+pub(crate) async fn apply_profile_sync(
+    handle: &AppHandle,
+    database: &AppDatabase,
+    profiles: Vec<wyd_common::Profile>,
+) -> Result<bool, String> {
+    let changed = update_display_names(database, &profiles)
+        .await
+        .map_err(db::command_error)?;
+    if changed {
+        emit_changed(handle, database).await?;
+    }
+    Ok(changed)
 }
 
 #[tauri::command]
@@ -96,4 +138,71 @@ pub async fn delete_friend(
     }
 
     Ok(changed)
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::*;
+
+    async fn database() -> AppDatabase {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect to in-memory SQLite");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("run database migrations");
+        AppDatabase::new(pool)
+    }
+
+    #[tokio::test]
+    async fn profile_update_changes_only_an_existing_friend() {
+        let database = database().await;
+        sqlx::query("INSERT INTO friends (id, display_name) VALUES (?1, ?2)")
+            .bind("friend-id")
+            .bind("Old")
+            .execute(database.pool())
+            .await
+            .unwrap();
+
+        assert!(
+            update_display_names(
+                &database,
+                &[
+                    wyd_common::Profile {
+                        id: "friend-id".to_owned(),
+                        display_name: "New".to_owned(),
+                    },
+                    wyd_common::Profile {
+                        id: "missing".to_owned(),
+                        display_name: "Name".to_owned(),
+                    },
+                ],
+            )
+            .await
+            .unwrap()
+        );
+        assert!(
+            !update_display_names(
+                &database,
+                &[wyd_common::Profile {
+                    id: "friend-id".to_owned(),
+                    display_name: "New".to_owned(),
+                }],
+            )
+            .await
+            .unwrap()
+        );
+        assert_eq!(
+            all(&database).await.unwrap(),
+            [User {
+                id: "friend-id".to_owned(),
+                display_name: "New".to_owned(),
+            }]
+        );
+    }
 }

@@ -11,10 +11,12 @@ use tauri_specta::Event;
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::tungstenite::Message;
 use wyd_common::{
-    ClientMessage, Profile, ServerMessage, message_bytes, profile_bytes, register_bytes,
+    ClientMessage, Profile, ServerMessage, friends_bytes, message_bytes, profile_bytes,
+    register_bytes,
 };
 
 use crate::db::AppDatabase;
+use crate::friends::{self, FriendsChanged};
 use crate::keypair::AppKeypair;
 use crate::remotes::{self, Remote, RemotesChanged};
 
@@ -54,6 +56,7 @@ pub struct Network {
     connections: Mutex<HashMap<String, Connection>>,
     statuses: Statuses,
     profile: watch::Sender<crate::user::User>,
+    friends: watch::Sender<Vec<String>>,
     keypair: AppKeypair,
     next_generation: AtomicU64,
 }
@@ -114,6 +117,7 @@ impl Network {
                 remote.clone(),
                 generation,
                 self.profile.subscribe(),
+                self.friends.subscribe(),
                 self.keypair.clone(),
                 receiver,
             ));
@@ -138,10 +142,13 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     let keypair = handle.state::<AppKeypair>().inner().clone();
     let profile = crate::profile::get(&database, keypair.public_key()).await?;
     let (profile, _) = watch::channel(profile);
+    let friends = friend_ids(friends::all(&database).await?, keypair.public_key());
+    let (friends, _) = watch::channel(friends);
     let network = Network {
         connections: Mutex::new(HashMap::new()),
         statuses: Statuses::default(),
         profile,
+        friends,
         keypair,
         next_generation: AtomicU64::new(1),
     };
@@ -155,6 +162,19 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             eprintln!("failed to synchronize remote connections: {error}");
         }
     });
+
+    let listener_handle = handle.clone();
+    FriendsChanged::listen(handle, move |event| {
+        let network = listener_handle.state::<Network>();
+        let ids = friend_ids(event.payload.friends, network.keypair.public_key());
+        network.friends.send_if_modified(|current| {
+            if *current == ids {
+                return false;
+            }
+            *current = ids;
+            true
+        });
+    });
     Ok(())
 }
 
@@ -164,6 +184,7 @@ async fn run(
     remote: Remote,
     generation: u64,
     mut profiles: watch::Receiver<crate::user::User>,
+    mut friends: watch::Receiver<Vec<String>>,
     keypair: AppKeypair,
     mut outgoing: mpsc::Receiver<String>,
 ) {
@@ -181,6 +202,7 @@ async fn run(
             &remote,
             generation,
             &mut profiles,
+            &mut friends,
             &keypair,
             &mut outgoing,
         )
@@ -205,6 +227,7 @@ async fn connect(
     remote: &Remote,
     generation: u64,
     profiles: &mut watch::Receiver<crate::user::User>,
+    friends: &mut watch::Receiver<Vec<String>>,
     keypair: &AppKeypair,
     outgoing: &mut mpsc::Receiver<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -222,11 +245,17 @@ async fn connect(
         id: current.id,
         display_name: current.display_name,
     };
+    let registration_friends = friends.borrow_and_update().clone();
     send(
         &mut writer,
         &ClientMessage::Register {
-            signature: keypair.sign(&register_bytes(&challenge, &registration_profile)),
+            signature: keypair.sign(&register_bytes(
+                &challenge,
+                &registration_profile,
+                &registration_friends,
+            )),
             profile: registration_profile,
+            friends: registration_friends,
         },
     )
     .await?;
@@ -234,6 +263,7 @@ async fn connect(
     if !matches!(recv(&mut reader).await?, ServerMessage::Registered) {
         return Err("server rejected registration".into());
     }
+    send(&mut writer, &ClientMessage::SyncFriendProfiles).await?;
     changed(
         handle,
         statuses,
@@ -263,7 +293,30 @@ async fn connect(
                     profile,
                 }).await?;
             }
+            changed = friends.changed() => {
+                changed.map_err(|_| "friends sender closed")?;
+                let friends = friends.borrow_and_update().clone();
+                send(&mut writer, &ClientMessage::FriendsUpdated {
+                    signature: keypair.sign(&friends_bytes(&friends)),
+                    friends,
+                }).await?;
+            }
             message = reader.next() => match message.ok_or("server closed the socket")?? {
+                Message::Text(text) => match serde_json::from_str(&text)? {
+                    ServerMessage::FriendProfileUpdated { profile } => {
+                        let database = handle.state::<AppDatabase>();
+                        if let Err(error) = friends::apply_profile_update(handle, &database, profile).await {
+                            eprintln!("failed to update friend profile: {error}");
+                        }
+                    }
+                    ServerMessage::FriendProfiles { profiles } => {
+                        let database = handle.state::<AppDatabase>();
+                        if let Err(error) = friends::apply_profile_sync(handle, &database, profiles).await {
+                            eprintln!("failed to synchronize friend profiles: {error}");
+                        }
+                    }
+                    _ => {}
+                },
                 Message::Ping(data) => writer.send(Message::Pong(data)).await?,
                 Message::Close(_) => return Ok(()),
                 _ => {}
@@ -401,4 +454,41 @@ fn url(remote: &Remote) -> String {
         .map(|port| format!(":{port}"))
         .unwrap_or_default();
     format!("{scheme}://{address}{port}/v1/ws")
+}
+
+fn friend_ids(friends: Vec<crate::user::User>, own_id: &str) -> Vec<String> {
+    let mut ids: Vec<_> = friends
+        .into_iter()
+        .map(|friend| friend.id)
+        .filter(|id| id != own_id)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+#[cfg(test)]
+mod tests {
+    use super::friend_ids;
+    use crate::user::User;
+
+    #[test]
+    fn friend_ids_discards_display_names_and_normalizes_ids() {
+        let friends = vec![
+            User {
+                id: "friend-b".to_owned(),
+                display_name: "Old name".to_owned(),
+            },
+            User {
+                id: "self".to_owned(),
+                display_name: "Me".to_owned(),
+            },
+            User {
+                id: "friend-a".to_owned(),
+                display_name: "Any name".to_owned(),
+            },
+        ];
+
+        assert_eq!(friend_ids(friends, "self"), ["friend-a", "friend-b"]);
+    }
 }

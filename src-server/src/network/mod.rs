@@ -14,7 +14,8 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
 use wyd_common::{
-    ClientMessage, Profile, ServerMessage, message_bytes, profile_bytes, register_bytes,
+    ClientMessage, Profile, ServerMessage, friends_bytes, message_bytes, profile_bytes,
+    register_bytes,
 };
 
 type Clients = Arc<Mutex<HashMap<String, Client>>>;
@@ -24,6 +25,8 @@ struct Client {
     key: VerifyingKey,
     #[allow(dead_code)] // Used when presence and profile lookup are exposed.
     profile: Profile,
+    #[allow(dead_code)] // Used when friend-authorized message routing is added.
+    friends: Vec<String>,
     #[allow(dead_code)] // Used when server-side message routing is added.
     sender: mpsc::Sender<Message>,
 }
@@ -56,11 +59,20 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
     let Some(Ok(Message::Text(text))) = socket.recv().await else {
         return;
     };
-    let Ok(ClientMessage::Register { profile, signature }) = serde_json::from_str(&text) else {
+    let Ok(ClientMessage::Register {
+        profile,
+        friends,
+        signature,
+    }) = serde_json::from_str(&text)
+    else {
         return;
     };
     let Ok(key) = key(&profile.id) else { return };
-    if !verify(&key, &register_bytes(&challenge, &profile), &signature) {
+    if !verify(
+        &key,
+        &register_bytes(&challenge, &profile, &friends),
+        &signature,
+    ) {
         return;
     }
 
@@ -73,6 +85,7 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
             connection_id,
             key,
             profile,
+            friends,
             sender,
         },
     );
@@ -107,6 +120,20 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
                             break;
                         }
                     }
+                    Ok(ClientMessage::FriendsUpdated { friends, signature }) => {
+                        if !update_friends(&clients, &public_key, connection_id, friends, &signature).await {
+                            break;
+                        }
+                    }
+                    Ok(ClientMessage::SyncFriendProfiles) => {
+                        let Some(profiles) = friend_profiles(&clients, &public_key, connection_id).await else {
+                            break;
+                        };
+                        let message = ServerMessage::FriendProfiles { profiles };
+                        if writer.send(Message::Text(serde_json::to_string(&message).unwrap().into())).await.is_err() {
+                            break;
+                        }
+                    }
                     _ => break,
                 }
                 Some(Ok(Message::Ping(data))) => {
@@ -129,17 +156,74 @@ async fn update_profile(
     signature: &str,
 ) -> bool {
     let mut clients = clients.lock().await;
+    {
+        let Some(client) = clients
+            .get_mut(public_key)
+            .filter(|client| client.connection_id == connection_id)
+        else {
+            return false;
+        };
+        if profile.id != public_key || !verify(&client.key, &profile_bytes(&profile), signature) {
+            return false;
+        }
+        client.profile = profile.clone();
+    }
+
+    let recipients: Vec<_> = clients
+        .values()
+        .filter(|client| client.friends.iter().any(|friend| friend == public_key))
+        .map(|client| client.sender.clone())
+        .collect();
+    drop(clients);
+
+    let message = Message::Text(
+        serde_json::to_string(&ServerMessage::FriendProfileUpdated { profile })
+            .unwrap()
+            .into(),
+    );
+    for recipient in recipients {
+        let _ = recipient.send(message.clone()).await;
+    }
+    true
+}
+
+async fn update_friends(
+    clients: &Clients,
+    public_key: &str,
+    connection_id: Uuid,
+    friends: Vec<String>,
+    signature: &str,
+) -> bool {
+    let mut clients = clients.lock().await;
     let Some(client) = clients
         .get_mut(public_key)
         .filter(|client| client.connection_id == connection_id)
     else {
         return false;
     };
-    if profile.id != public_key || !verify(&client.key, &profile_bytes(&profile), signature) {
+    if !verify(&client.key, &friends_bytes(&friends), signature) {
         return false;
     }
-    client.profile = profile;
+    client.friends = friends;
     true
+}
+
+async fn friend_profiles(
+    clients: &Clients,
+    public_key: &str,
+    connection_id: Uuid,
+) -> Option<Vec<Profile>> {
+    let clients = clients.lock().await;
+    let client = clients
+        .get(public_key)
+        .filter(|client| client.connection_id == connection_id)?;
+    let mut profiles: Vec<_> = client
+        .friends
+        .iter()
+        .filter_map(|friend| clients.get(friend).map(|client| client.profile.clone()))
+        .collect();
+    profiles.sort_by(|a, b| a.id.cmp(&b.id));
+    Some(profiles)
 }
 
 async fn remove(clients: &Clients, public_key: &str, connection_id: Uuid) {
@@ -189,7 +273,8 @@ mod tests {
             id: URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes()),
             display_name: "Wind".to_owned(),
         };
-        let registration = register_bytes("challenge", &profile);
+        let friends = vec!["friend".to_owned()];
+        let registration = register_bytes("challenge", &profile, &friends);
         let signature = URL_SAFE_NO_PAD.encode(signing_key.sign(&registration).to_bytes());
 
         assert!(verify(
@@ -199,7 +284,12 @@ mod tests {
         ));
         assert!(!verify(
             &signing_key.verifying_key(),
-            &register_bytes("another challenge", &profile),
+            &register_bytes("another challenge", &profile, &friends),
+            &signature,
+        ));
+        assert!(!verify(
+            &signing_key.verifying_key(),
+            &register_bytes("challenge", &profile, &["another-friend".to_owned()]),
             &signature,
         ));
 
@@ -219,19 +309,37 @@ mod tests {
         let public_key = URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes());
         let connection_id = Uuid::new_v4();
         let (sender, _receiver) = mpsc::channel(1);
+        let (friend_sender, mut friend_receiver) = mpsc::channel(1);
         let clients = Clients::default();
-        clients.lock().await.insert(
-            public_key.clone(),
-            Client {
-                connection_id,
-                key: signing_key.verifying_key(),
-                profile: Profile {
-                    id: public_key.clone(),
-                    display_name: "Old".to_owned(),
+        {
+            let mut clients = clients.lock().await;
+            clients.insert(
+                public_key.clone(),
+                Client {
+                    connection_id,
+                    key: signing_key.verifying_key(),
+                    profile: Profile {
+                        id: public_key.clone(),
+                        display_name: "Old".to_owned(),
+                    },
+                    friends: Vec::new(),
+                    sender,
                 },
-                sender,
-            },
-        );
+            );
+            clients.insert(
+                "friend".to_owned(),
+                Client {
+                    connection_id: Uuid::new_v4(),
+                    key: signing_key.verifying_key(),
+                    profile: Profile {
+                        id: "friend".to_owned(),
+                        display_name: "Friend".to_owned(),
+                    },
+                    friends: vec![public_key.clone()],
+                    sender: friend_sender,
+                },
+            );
+        }
         let profile = Profile {
             id: public_key.clone(),
             display_name: "New".to_owned(),
@@ -239,7 +347,7 @@ mod tests {
         let signature =
             URL_SAFE_NO_PAD.encode(signing_key.sign(&profile_bytes(&profile)).to_bytes());
 
-        assert!(update_profile(&clients, &public_key, connection_id, profile, &signature).await);
+        assert!(update_profile(&clients, &public_key, connection_id, profile, &signature,).await);
         assert_eq!(
             clients
                 .lock()
@@ -249,6 +357,146 @@ mod tests {
                 .profile
                 .display_name,
             "New"
+        );
+        let announcement = friend_receiver
+            .recv()
+            .await
+            .expect("friend receives update");
+        let Message::Text(announcement) = announcement else {
+            panic!("expected text announcement");
+        };
+        let ServerMessage::FriendProfileUpdated { profile } =
+            serde_json::from_str(&announcement).expect("decode announcement")
+        else {
+            panic!("expected friend profile update");
+        };
+        assert_eq!(profile.id, public_key);
+        assert_eq!(profile.display_name, "New");
+
+        let stale_profile = Profile {
+            id: public_key.clone(),
+            display_name: "Stale".to_owned(),
+        };
+        let stale_signature =
+            URL_SAFE_NO_PAD.encode(signing_key.sign(&profile_bytes(&stale_profile)).to_bytes());
+        assert!(
+            !update_profile(
+                &clients,
+                &public_key,
+                Uuid::new_v4(),
+                stale_profile,
+                &stale_signature,
+            )
+            .await
+        );
+        assert!(friend_receiver.try_recv().is_err());
+        assert_eq!(
+            clients
+                .lock()
+                .await
+                .get(&public_key)
+                .unwrap()
+                .profile
+                .display_name,
+            "New"
+        );
+    }
+
+    #[tokio::test]
+    async fn authenticated_friend_update_changes_only_ids() {
+        let signing_key = SigningKey::from_bytes(&[7; 32]);
+        let public_key = URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes());
+        let connection_id = Uuid::new_v4();
+        let (sender, _receiver) = mpsc::channel(1);
+        let clients = Clients::default();
+        clients.lock().await.insert(
+            public_key.clone(),
+            Client {
+                connection_id,
+                key: signing_key.verifying_key(),
+                profile: Profile {
+                    id: public_key.clone(),
+                    display_name: "Wind".to_owned(),
+                },
+                friends: Vec::new(),
+                sender,
+            },
+        );
+        let friends = vec!["friend-a".to_owned(), "friend-b".to_owned()];
+        let signature =
+            URL_SAFE_NO_PAD.encode(signing_key.sign(&friends_bytes(&friends)).to_bytes());
+
+        assert!(
+            update_friends(
+                &clients,
+                &public_key,
+                connection_id,
+                friends.clone(),
+                &signature,
+            )
+            .await
+        );
+        assert_eq!(
+            clients.lock().await.get(&public_key).unwrap().friends,
+            friends
+        );
+    }
+
+    #[tokio::test]
+    async fn profile_sync_returns_only_connected_friends_for_the_current_session() {
+        let signing_key = SigningKey::from_bytes(&[7; 32]);
+        let connection_id = Uuid::new_v4();
+        let (sender, _receiver) = mpsc::channel(1);
+        let clients = Clients::default();
+        let mut registry = clients.lock().await;
+        registry.insert(
+            "requester".to_owned(),
+            Client {
+                connection_id,
+                key: signing_key.verifying_key(),
+                profile: Profile {
+                    id: "requester".to_owned(),
+                    display_name: "Requester".to_owned(),
+                },
+                friends: vec![
+                    "friend-b".to_owned(),
+                    "offline".to_owned(),
+                    "friend-a".to_owned(),
+                ],
+                sender: sender.clone(),
+            },
+        );
+        for (id, display_name) in [("friend-a", "Alice"), ("friend-b", "Bob")] {
+            registry.insert(
+                id.to_owned(),
+                Client {
+                    connection_id: Uuid::new_v4(),
+                    key: signing_key.verifying_key(),
+                    profile: Profile {
+                        id: id.to_owned(),
+                        display_name: display_name.to_owned(),
+                    },
+                    friends: Vec::new(),
+                    sender: sender.clone(),
+                },
+            );
+        }
+        drop(registry);
+
+        let profiles = friend_profiles(&clients, "requester", connection_id)
+            .await
+            .expect("current session");
+        assert_eq!(
+            profiles
+                .iter()
+                .map(|profile| (profile.id.as_str(), profile.display_name.as_str()))
+                .collect::<Vec<_>>(),
+            [("friend-a", "Alice"), ("friend-b", "Bob")]
+        );
+        assert!(
+            friend_profiles(&clients, "requester", Uuid::new_v4())
+                .await
+                .is_none()
         );
     }
 }
