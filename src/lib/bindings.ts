@@ -52,6 +52,8 @@ async listStatuses() : Promise<ConnectionStatus[]> {
 export const events = __makeEvents__<{
 cursorPositionChanged: CursorPositionChanged,
 foregroundAppChanged: ForegroundAppChanged,
+friendCursorPositionChanged: FriendCursorPositionChanged,
+friendForegroundAppChanged: FriendForegroundAppChanged,
 friendsChanged: FriendsChanged,
 networkStatusChanged: NetworkStatusChanged,
 profileChanged: ProfileChanged,
@@ -59,6 +61,8 @@ remotesChanged: RemotesChanged
 }>({
 cursorPositionChanged: "cursor-position-changed",
 foregroundAppChanged: "foreground-app-changed",
+friendCursorPositionChanged: "friend-cursor-position-changed",
+friendForegroundAppChanged: "friend-foreground-app-changed",
 friendsChanged: "friends-changed",
 networkStatusChanged: "network-status-changed",
 profileChanged: "profile-changed",
@@ -81,6 +85,8 @@ export type CursorPosition = { x: number; y: number }
 export type CursorPositionChanged = { positions: CursorPositions }
 export type CursorPositions = { raw: CursorPosition; mapped: CursorPosition }
 export type ForegroundAppChanged = { meta: AppMeta }
+export type FriendCursorPositionChanged = { friendId: string; positions: CursorPositions }
+export type FriendForegroundAppChanged = { friendId: string; meta: AppMeta }
 export type FriendsChanged = { friends: User[] }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
 export type ProfileChanged = { profile: User }

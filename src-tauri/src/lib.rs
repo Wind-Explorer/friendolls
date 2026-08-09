@@ -2,6 +2,7 @@ mod cursor;
 mod db;
 mod friends;
 mod keypair;
+mod live_data;
 mod network;
 mod profile;
 mod remotes;
@@ -73,7 +74,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             profile::ProfileChanged,
             network::NetworkStatusChanged,
             cursor::CursorPositionChanged,
+            cursor::FriendCursorPositionChanged,
             ufa::ForegroundAppChanged,
+            ufa::FriendForegroundAppChanged,
         ])
 }
 

@@ -108,12 +108,9 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
             message = reader.next() => match message {
                 Some(Ok(Message::Text(text))) => match serde_json::from_str(&text) {
                     Ok(ClientMessage::Signed { payload, signature }) => {
-                        let registered_key = clients.lock().await.get(&public_key)
-                            .filter(|client| client.connection_id == connection_id)
-                            .map(|client| client.key);
-                        let Some(registered_key) = registered_key else { break };
-                        if !verify(&registered_key, &message_bytes(&payload), &signature) { break; }
-                        // The message is authenticated. Domain routing comes next.
+                        if !relay_live_data(&clients, &public_key, connection_id, payload, &signature).await {
+                            break;
+                        }
                     }
                     Ok(ClientMessage::ProfileUpdated { profile, signature }) => {
                         if !update_profile(&clients, &public_key, connection_id, profile, &signature).await {
@@ -224,6 +221,49 @@ async fn friend_profiles(
         .collect();
     profiles.sort_by(|a, b| a.id.cmp(&b.id));
     Some(profiles)
+}
+
+async fn relay_live_data(
+    clients: &Clients,
+    public_key: &str,
+    connection_id: Uuid,
+    payload: String,
+    signature: &str,
+) -> bool {
+    let clients = clients.lock().await;
+    let Some(source) = clients
+        .get(public_key)
+        .filter(|client| client.connection_id == connection_id)
+    else {
+        return false;
+    };
+    if !verify(&source.key, &message_bytes(&payload), signature) {
+        return false;
+    }
+
+    let recipients: Vec<_> = clients
+        .iter()
+        .filter(|(recipient_id, recipient)| {
+            recipient_id.as_str() != public_key
+                && source.friends.iter().any(|friend| friend == *recipient_id)
+                && recipient.friends.iter().any(|friend| friend == public_key)
+        })
+        .map(|(_, recipient)| recipient.sender.clone())
+        .collect();
+    drop(clients);
+
+    let message = Message::Text(
+        serde_json::to_string(&ServerMessage::FriendLiveData {
+            friend_id: public_key.to_owned(),
+            payload,
+        })
+        .unwrap()
+        .into(),
+    );
+    for recipient in recipients {
+        let _ = recipient.try_send(message.clone());
+    }
+    true
 }
 
 async fn remove(clients: &Clients, public_key: &str, connection_id: Uuid) {
@@ -498,5 +538,110 @@ mod tests {
                 .await
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn live_data_relay_requires_valid_session_signature_and_mutual_friendship() {
+        let signing_key = SigningKey::from_bytes(&[7; 32]);
+        let public_key = URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes());
+        let connection_id = Uuid::new_v4();
+        let (source_sender, _source_receiver) = mpsc::channel(1);
+        let (mutual_sender, mut mutual_receiver) = mpsc::channel(1);
+        let (sender_only_sender, mut sender_only_receiver) = mpsc::channel(1);
+        let (recipient_only_sender, mut recipient_only_receiver) = mpsc::channel(1);
+        let clients = Clients::default();
+        let mut registry = clients.lock().await;
+        registry.insert(
+            public_key.clone(),
+            Client {
+                connection_id,
+                key: signing_key.verifying_key(),
+                profile: Profile {
+                    id: public_key.clone(),
+                    display_name: "Source".to_owned(),
+                },
+                friends: vec!["mutual".to_owned(), "sender-only".to_owned()],
+                sender: source_sender,
+            },
+        );
+        for (id, friends, sender) in [
+            ("mutual", vec![public_key.clone()], mutual_sender),
+            ("sender-only", Vec::new(), sender_only_sender),
+            (
+                "recipient-only",
+                vec![public_key.clone()],
+                recipient_only_sender,
+            ),
+        ] {
+            registry.insert(
+                id.to_owned(),
+                Client {
+                    connection_id: Uuid::new_v4(),
+                    key: signing_key.verifying_key(),
+                    profile: Profile {
+                        id: id.to_owned(),
+                        display_name: id.to_owned(),
+                    },
+                    friends,
+                    sender,
+                },
+            );
+        }
+        drop(registry);
+
+        let payload = r#"{"type":"cursor","positions":{}}"#.to_owned();
+        let signature =
+            URL_SAFE_NO_PAD.encode(signing_key.sign(&message_bytes(&payload)).to_bytes());
+        assert!(
+            relay_live_data(
+                &clients,
+                &public_key,
+                connection_id,
+                payload.clone(),
+                &signature,
+            )
+            .await
+        );
+
+        let Message::Text(message) = mutual_receiver
+            .recv()
+            .await
+            .expect("mutual friend receives")
+        else {
+            panic!("expected text live data");
+        };
+        let ServerMessage::FriendLiveData {
+            friend_id,
+            payload: received_payload,
+        } = serde_json::from_str(&message).expect("decode live data")
+        else {
+            panic!("expected friend live data");
+        };
+        assert_eq!(friend_id, public_key);
+        assert_eq!(received_payload, payload);
+        assert!(sender_only_receiver.try_recv().is_err());
+        assert!(recipient_only_receiver.try_recv().is_err());
+
+        assert!(
+            !relay_live_data(
+                &clients,
+                &public_key,
+                Uuid::new_v4(),
+                payload.clone(),
+                &signature,
+            )
+            .await
+        );
+        assert!(
+            !relay_live_data(
+                &clients,
+                &public_key,
+                connection_id,
+                "tampered".to_owned(),
+                &signature,
+            )
+            .await
+        );
+        assert!(mutual_receiver.try_recv().is_err());
     }
 }

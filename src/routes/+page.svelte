@@ -1,5 +1,6 @@
 <script>
   import FriendsList from "$lib/components/friends-list.svelte";
+  import FriendsLiveData from "$lib/components/friends-live-data.svelte";
   import ConnectionStatus from "$lib/components/connection-status.svelte";
   import Profile from "$lib/components/profile.svelte";
   import RemotesList from "$lib/components/remotes-list.svelte";
@@ -10,8 +11,11 @@
   <div>
     <Profile />
   </div>
-  <div>
-    <FriendsList />
+  <div class="friends-area">
+    <div>
+      <FriendsList />
+    </div>
+    <FriendsLiveData />
   </div>
   <div>
     <RemotesList />
@@ -23,3 +27,6 @@
     <LiveMetadata />
   </div>
 </main>
+
+<style>
+</style>

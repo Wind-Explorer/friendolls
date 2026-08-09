@@ -30,6 +30,13 @@ pub struct CursorPositionChanged {
     pub positions: CursorPositions,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct FriendCursorPositionChanged {
+    pub friend_id: String,
+    pub positions: CursorPositions,
+}
+
 #[derive(Default)]
 pub struct CursorState(RwLock<CursorPositions>);
 
@@ -91,8 +98,31 @@ fn update_cursor_position(handle: &AppHandle, positions: CursorPositions) {
     *guard = positions.clone();
     drop(guard);
 
-    if let Err(error) = (CursorPositionChanged { positions }).emit(handle) {
+    if let Err(error) = (CursorPositionChanged {
+        positions: positions.clone(),
+    })
+    .emit(handle)
+    {
         eprintln!("Failed to emit cursor position change: {error}");
+    }
+
+    handle
+        .state::<crate::network::Network>()
+        .send_live_data(crate::live_data::LiveData::Cursor { positions });
+}
+
+pub(crate) fn emit_friend_position(
+    handle: &AppHandle,
+    friend_id: String,
+    positions: CursorPositions,
+) {
+    if let Err(error) = (FriendCursorPositionChanged {
+        friend_id,
+        positions,
+    })
+    .emit(handle)
+    {
+        eprintln!("Failed to emit friend cursor position change: {error}");
     }
 }
 

@@ -19,6 +19,13 @@ pub struct ForegroundAppChanged {
     pub meta: AppMeta,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct FriendForegroundAppChanged {
+    pub friend_id: String,
+    pub meta: AppMeta,
+}
+
 #[derive(Default)]
 pub struct ForegroundAppState(RwLock<AppMeta>);
 
@@ -67,8 +74,18 @@ pub fn init(handle: &AppHandle) {
         *current = meta.clone();
         drop(current);
 
-        if let Err(error) = (ForegroundAppChanged { meta }).emit(&handle) {
+        if let Err(error) = (ForegroundAppChanged { meta: meta.clone() }).emit(&handle) {
             eprintln!("Failed to emit foreground app change: {error}");
         }
+
+        handle
+            .state::<crate::network::Network>()
+            .send_live_data(crate::live_data::LiveData::ForegroundApp { meta });
     });
+}
+
+pub(crate) fn emit_friend_app(handle: &AppHandle, friend_id: String, meta: AppMeta) {
+    if let Err(error) = (FriendForegroundAppChanged { friend_id, meta }).emit(handle) {
+        eprintln!("Failed to emit friend foreground app change: {error}");
+    }
 }

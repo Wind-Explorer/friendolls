@@ -39,6 +39,7 @@ pub enum ServerMessage {
     Registered,
     FriendProfileUpdated { profile: Profile },
     FriendProfiles { profiles: Vec<Profile> },
+    FriendLiveData { friend_id: String, payload: String },
 }
 
 pub fn register_bytes(challenge: &str, profile: &Profile, friends: &[String]) -> Vec<u8> {

@@ -18,6 +18,7 @@ use wyd_common::{
 use crate::db::AppDatabase;
 use crate::friends::{self, FriendsChanged};
 use crate::keypair::AppKeypair;
+use crate::live_data::LiveData;
 use crate::remotes::{self, Remote, RemotesChanged};
 
 type Statuses = Arc<Mutex<HashMap<String, (u64, ConnectionStatus)>>>;
@@ -62,16 +63,23 @@ pub struct Network {
 }
 
 impl Network {
-    #[allow(dead_code)] // Ready for the first domain message sender.
-    pub fn send(&self, remote_id: &str, payload: String) -> Result<(), String> {
-        let connections = self.connections.lock().map_err(|error| error.to_string())?;
-        let sender = connections
-            .get(remote_id)
-            .map(|connection| &connection.sender)
-            .ok_or_else(|| "remote is not configured".to_string())?;
-        sender
-            .try_send(payload)
-            .map_err(|error| format!("remote is not ready: {error}"))
+    pub fn send_live_data(&self, data: LiveData) {
+        let Ok(payload) = serde_json::to_string(&data) else {
+            eprintln!("failed to serialize live data");
+            return;
+        };
+        let Ok(connections) = self.connections.lock() else {
+            eprintln!("failed to lock remote connections for live data");
+            return;
+        };
+        for connection in connections.values() {
+            match connection.sender.try_send(payload.clone()) {
+                Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    eprintln!("remote {} cannot accept live data", connection.remote.id);
+                }
+            }
+        }
     }
 
     pub fn update_profile(&self, profile: crate::user::User) {
@@ -263,6 +271,7 @@ async fn connect(
     if !matches!(recv(&mut reader).await?, ServerMessage::Registered) {
         return Err("server rejected registration".into());
     }
+    while outgoing.try_recv().is_ok() {}
     send(&mut writer, &ClientMessage::SyncFriendProfiles).await?;
     changed(
         handle,
@@ -313,6 +322,19 @@ async fn connect(
                         let database = handle.state::<AppDatabase>();
                         if let Err(error) = friends::apply_profile_sync(handle, &database, profiles).await {
                             eprintln!("failed to synchronize friend profiles: {error}");
+                        }
+                    }
+                    ServerMessage::FriendLiveData { friend_id, payload } => {
+                        match serde_json::from_str(&payload) {
+                            Ok(LiveData::Cursor { positions }) => {
+                                crate::cursor::emit_friend_position(handle, friend_id, positions);
+                            }
+                            Ok(LiveData::ForegroundApp { meta }) => {
+                                crate::ufa::emit_friend_app(handle, friend_id, meta);
+                            }
+                            Err(error) => {
+                                eprintln!("failed to decode friend live data: {error}");
+                            }
                         }
                     }
                     _ => {}
