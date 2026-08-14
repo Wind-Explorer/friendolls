@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Manager, WebviewUrl};
 
-const WINDOW_LABEL: &str = "main";
+const WINDOW_LABEL: &str = "debug";
 
 pub fn init(handle: &AppHandle) {
     if let Some(window) = handle.get_webview_window(WINDOW_LABEL) {
@@ -14,7 +14,7 @@ pub fn init(handle: &AppHandle) {
 
     let builder =
         tauri::WebviewWindowBuilder::new(handle, WINDOW_LABEL, WebviewUrl::App("/".into()))
-            .title("Wyd")
+            .title("Wyd Debug")
             .inner_size(800.0, 600.0)
             .min_inner_size(500.0, 400.0)
             .visible(true);

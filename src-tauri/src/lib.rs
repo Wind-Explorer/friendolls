@@ -9,7 +9,6 @@ mod remotes;
 mod ufa;
 mod ui;
 mod user;
-mod windowing;
 
 use tauri::Manager;
 
@@ -22,7 +21,6 @@ async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     app.manage(cursor::CursorState::default());
     ufa::init(handle);
     cursor::init(handle);
-    // windowing::init(handle);
     ui::init(handle);
     Ok(())
 }
@@ -76,7 +74,6 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             profile::ProfileChanged,
             network::NetworkStatusChanged,
             cursor::CursorPositionChanged,
-            cursor::FriendCursorPositionChanged,
             ufa::ForegroundAppChanged,
             ufa::FriendForegroundAppChanged,
         ])

@@ -2,6 +2,7 @@ use device_query::{DeviceEvents, DeviceEventsHandler};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::RwLock;
 use std::time::Duration;
@@ -27,18 +28,23 @@ pub struct CursorPositions {
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorPositionChanged {
-    pub positions: CursorPositions,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
-#[serde(rename_all = "camelCase")]
-pub struct FriendCursorPositionChanged {
-    pub friend_id: String,
-    pub positions: CursorPositions,
+    pub positions: HashMap<String, CursorPositions>,
 }
 
 #[derive(Default)]
-pub struct CursorState(RwLock<CursorPositions>);
+pub struct CursorState(RwLock<HashMap<String, CursorPositions>>);
+
+impl CursorState {
+    fn update(
+        &self,
+        user_id: String,
+        positions: CursorPositions,
+    ) -> Result<HashMap<String, CursorPositions>, String> {
+        let mut positions_by_user = self.0.write().map_err(|error| error.to_string())?;
+        positions_by_user.insert(user_id, positions);
+        Ok(positions_by_user.clone())
+    }
+}
 
 // Was private, but for some reason LSP
 // complains even when there's no external references.
@@ -92,37 +98,28 @@ pub fn init(app: &AppHandle) {
 
 #[inline]
 fn update_cursor_position(handle: &AppHandle, positions: CursorPositions) {
-    let state = handle.state::<CursorState>();
-    let mut guard = state.0.write().expect("Cursor Position lock failed");
-
-    *guard = positions.clone();
-    drop(guard);
-
-    if let Err(error) = (CursorPositionChanged {
-        positions: positions.clone(),
-    })
-    .emit(handle)
-    {
-        eprintln!("Failed to emit cursor position change: {error}");
-    }
+    let user_id = handle
+        .state::<crate::keypair::AppKeypair>()
+        .public_key()
+        .to_owned();
+    emit_position(handle, user_id, positions.clone());
 
     handle
         .state::<crate::network::Network>()
         .send_live_data(crate::live_data::LiveData::Cursor { positions });
 }
 
-pub(crate) fn emit_friend_position(
-    handle: &AppHandle,
-    friend_id: String,
-    positions: CursorPositions,
-) {
-    if let Err(error) = (FriendCursorPositionChanged {
-        friend_id,
-        positions,
-    })
-    .emit(handle)
-    {
-        eprintln!("Failed to emit friend cursor position change: {error}");
+pub(crate) fn emit_position(handle: &AppHandle, user_id: String, positions: CursorPositions) {
+    let positions = match handle.state::<CursorState>().update(user_id, positions) {
+        Ok(positions) => positions,
+        Err(error) => {
+            eprintln!("Failed to update cursor positions: {error}");
+            return;
+        }
+    };
+
+    if let Err(error) = (CursorPositionChanged { positions }).emit(handle) {
+        eprintln!("Failed to emit cursor position change: {error}");
     }
 }
 
@@ -153,6 +150,35 @@ fn transform_coords(pos: &CursorPosition, to_normalized: bool, w: f64, h: f64) -
             x: (pos.x * w).round(),
             y: (pos.y * h).round(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn positions(x: f64) -> CursorPositions {
+        CursorPositions {
+            raw: CursorPosition { x, y: x },
+            mapped: CursorPosition { x, y: x },
+        }
+    }
+
+    #[test]
+    fn cursor_state_tracks_and_replaces_positions_by_user_id() {
+        let state = CursorState::default();
+
+        let snapshot = state.update("local".to_owned(), positions(1.0)).unwrap();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot["local"].raw.x, 1.0);
+
+        let snapshot = state.update("friend".to_owned(), positions(2.0)).unwrap();
+        assert_eq!(snapshot.len(), 2);
+        assert_eq!(snapshot["friend"].raw.x, 2.0);
+
+        let snapshot = state.update("local".to_owned(), positions(3.0)).unwrap();
+        assert_eq!(snapshot.len(), 2);
+        assert_eq!(snapshot["local"].raw.x, 3.0);
     }
 }
 

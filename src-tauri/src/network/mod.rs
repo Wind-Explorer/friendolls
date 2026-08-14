@@ -327,7 +327,7 @@ async fn connect(
                     ServerMessage::FriendLiveData { friend_id, payload } => {
                         match serde_json::from_str(&payload) {
                             Ok(LiveData::Cursor { positions }) => {
-                                crate::cursor::emit_friend_position(handle, friend_id, positions);
+                                crate::cursor::emit_position(handle, friend_id, positions);
                             }
                             Ok(LiveData::ForegroundApp { meta }) => {
                                 crate::ufa::emit_friend_app(handle, friend_id, meta);
