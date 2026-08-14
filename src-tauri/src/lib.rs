@@ -7,6 +7,7 @@ mod network;
 mod profile;
 mod remotes;
 mod ufa;
+mod ui;
 mod user;
 mod windowing;
 
@@ -21,7 +22,8 @@ async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     app.manage(cursor::CursorState::default());
     ufa::init(handle);
     cursor::init(handle);
-    windowing::init(handle);
+    // windowing::init(handle);
+    ui::init(handle);
     Ok(())
 }
 
