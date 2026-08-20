@@ -67,6 +67,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             profile::update_profile,
             keypair::get_public_key,
             network::list_statuses,
+            ui::scene::update_scene_hitboxes,
         ])
         .events(tauri_specta::collect_events![
             friends::FriendsChanged,

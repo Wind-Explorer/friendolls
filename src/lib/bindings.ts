@@ -43,6 +43,9 @@ async getPublicKey() : Promise<string> {
 },
 async listStatuses() : Promise<ConnectionStatus[]> {
     return await TAURI_INVOKE("list_statuses");
+},
+async updateSceneHitboxes(hitboxes: SceneHitbox[]) : Promise<null> {
+    return await TAURI_INVOKE("update_scene_hitboxes", { hitboxes });
 }
 }
 
@@ -90,6 +93,7 @@ export type ProfileChanged = { profile: User }
 export type Remote = { id: string; address: string; name: string | null; port: number | null }
 export type RemoteInput = { address: string; name: string | null; port: number | null }
 export type RemotesChanged = { remotes: Remote[] }
+export type SceneHitbox = { x: number; y: number; width: number; height: number }
 /**
  * Public user identity exchanged with peers and remote servers. `id` is the
  * user's Ed25519 public key and is not persisted as local profile metadata.

@@ -1,5 +1,12 @@
-<div>
-  <div class="mt-12 mx-auto px-3 py-1 rounded w-min bg-white text-black">
-    <p>WYD</p>
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { startHitboxSync } from "./hitboxes";
+
+  onMount(startHitboxSync);
+</script>
+
+<div class="size-full flex flex-col justify-end">
+  <div role="banner" class="scene-hitbox w-full h-min bg-white text-black">
+    <p class="w-max">WYD</p>
   </div>
 </div>
