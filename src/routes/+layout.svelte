@@ -1,8 +1,13 @@
 <script>
   import { browser } from "$app/environment";
+  import { onMount } from "svelte";
+  import { initAppListeners } from "$lib/listeners";
   import "../app.css";
 
   let { children } = $props();
+
+  onMount(initAppListeners);
+
   if (browser) {
     document.addEventListener("contextmenu", (e) => {
       e.preventDefault();

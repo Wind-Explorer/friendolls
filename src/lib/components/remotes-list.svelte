@@ -1,24 +1,9 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { commands, events, type Remote, type RemoteInput } from "$lib/bindings";
+  import { commands, type RemoteInput } from "$lib/bindings";
+  import { remotes, remotesListenerError } from "$lib/listeners/remotes";
 
-  let remotes: Remote[] = [];
   let editingId: string | null = null;
   let error = "";
-
-  onMount(() => {
-    const unlisten = events.remotesChanged.listen((event) => {
-      remotes = event.payload.remotes;
-    });
-
-    commands.listRemotes().catch((err) => {
-      error = String(err);
-    });
-
-    return () => {
-      unlisten.then((stop) => stop());
-    };
-  });
 
   function remoteInput(form: HTMLFormElement): RemoteInput {
     const data = new FormData(form);
@@ -98,15 +83,15 @@
     <button type="submit">Create remote</button>
   </form>
 
-  {#if error}
-    <p aria-live="polite">{error}</p>
+  {#if error || $remotesListenerError}
+    <p aria-live="polite">{error || $remotesListenerError}</p>
   {/if}
 
-  {#if remotes.length === 0}
+  {#if $remotes.length === 0}
     <p>No remotes saved.</p>
   {:else}
     <ul>
-      {#each remotes as remote (remote.id)}
+      {#each $remotes as remote (remote.id)}
         <li>
           {#if editingId === remote.id}
             <form onsubmit={(event) => updateRemote(event, remote.id)}>
