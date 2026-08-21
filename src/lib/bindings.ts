@@ -84,7 +84,15 @@ export type ConnectionState = "connecting" | "connected" | "disconnected"
 export type ConnectionStatus = { remoteId: string; address: string; name: string | null; state: ConnectionState }
 export type CursorPosition = { x: number; y: number }
 export type CursorPositionChanged = { positions: Partial<{ [key in string]: CursorPositions }> }
-export type CursorPositions = { raw: CursorPosition; mapped: CursorPosition }
+export type CursorPositions = { 
+/**
+ * Absolute cursor coordinates in physical pixels.
+ */
+raw: CursorPosition; 
+/**
+ * Cursor coordinates normalized to the source monitor for scale-independent projection.
+ */
+mapped: CursorPosition }
 export type ForegroundAppChanged = { meta: AppMeta }
 export type FriendForegroundAppChanged = { friendId: string; meta: AppMeta }
 export type FriendsChanged = { friends: User[] }

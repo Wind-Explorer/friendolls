@@ -21,7 +21,9 @@ pub struct CursorPosition {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorPositions {
+    /// Absolute cursor coordinates in physical pixels.
     pub raw: CursorPosition,
+    /// Cursor coordinates normalized to the source monitor for scale-independent projection.
     pub mapped: CursorPosition,
 }
 
@@ -179,6 +181,25 @@ mod tests {
         let snapshot = state.update("local".to_owned(), positions(3.0)).unwrap();
         assert_eq!(snapshot.len(), 2);
         assert_eq!(snapshot["local"].raw.x, 3.0);
+    }
+
+    #[test]
+    fn physical_cursor_positions_normalize_across_display_scale_factors() {
+        let one_x = transform_coords(&CursorPosition { x: 720.0, y: 450.0 }, true, 1440.0, 900.0);
+        let two_x = transform_coords(
+            &CursorPosition {
+                x: 1440.0,
+                y: 900.0,
+            },
+            true,
+            2880.0,
+            1800.0,
+        );
+
+        assert_eq!(one_x.x, 0.5);
+        assert_eq!(one_x.y, 0.5);
+        assert_eq!(two_x.x, one_x.x);
+        assert_eq!(two_x.y, one_x.y);
     }
 }
 
