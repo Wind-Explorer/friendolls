@@ -24,9 +24,9 @@
   }
 </script>
 
-<article class="w-68 overflow-hidden text-neutral-100">
+<article class="w-68 overflow-hidden text-base-content">
   <header
-    class="flex w-max items-center ml-2 gap-1 px-2 py-0.5 bg-neutral-800 border border-neutral-500 border-b-0"
+    class="flex w-max items-center ml-2 gap-1 px-2 py-0.5 bg-base-200 border border-base-300 border-b-0"
   >
     <div class="min-w-0 flex-1">
       <p id={titleId} class="truncate text-xs">{username}</p>
@@ -34,10 +34,10 @@
   </header>
 
   <div
-    class="grid gap-3 p-2 text-sm bg-neutral-900 border border-neutral-500 shadow-lg"
+    class="grid gap-3 p-2 text-sm bg-base-100 border border-base-200 shadow-lg"
   >
     <section>
-      <h3 class="text-xs font-medium text-neutral-400">Currently enjoying</h3>
+      <h3 class="text-xs text-base-content/50">Currently enjoying</h3>
       <div class="mt-1 flex min-w-0 items-center gap-2">
         {#if foregroundApp?.ico}
           <img
@@ -47,13 +47,13 @@
           />
         {/if}
         <div class="min-w-0">
-          <p class="truncate text-xs">
+          <p class="truncate text-sm">
             {foregroundApp?.local ??
               foregroundApp?.unlocal ??
               "Waiting for data"}
           </p>
           {#if foregroundApp?.local && foregroundApp.unlocal}
-            <p class="truncate text-xs text-neutral-400">
+            <p class="truncate text-xs text-base-content/50">
               {foregroundApp.unlocal}
             </p>
           {/if}

@@ -31,7 +31,8 @@
       {@const foregroundApp = $liveMetadata.foregroundApps.get(userId)}
       {@const popoverId = `scene-user-${index}`}
       {#if cursor}
-        {@const renderedX = selectedUserId === userId ? selectedUserX : cursor.mapped.x}
+        {@const renderedX =
+          selectedUserId === userId ? selectedUserX : cursor.mapped.x}
         <div
           class="absolute bottom-0 left-0 flex flex-col items-center gap-1 transition-transform duration-1000 ease-linear"
           style:transform={`translateX(${(renderedX ?? cursor.mapped.x) * 100}vw)`}
