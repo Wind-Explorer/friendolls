@@ -4,16 +4,16 @@ use std::iter;
 use std::os::windows::ffi::OsStringExt;
 use std::path::Path;
 use std::ptr;
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Globalization::GetUserDefaultLangID;
 use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
 use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
-use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
+use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
-    EVENT_SYSTEM_FOREGROUND, MSG, WINEVENT_OUTOFCONTEXT,
+    DispatchMessageW, EVENT_SYSTEM_FOREGROUND, GetForegroundWindow, GetMessageW, GetWindowTextW,
+    GetWindowThreadProcessId, MSG, WINEVENT_OUTOFCONTEXT,
 };
+use windows::core::PCWSTR;
 
 pub fn listen_for_active_app_changes<F>(callback: F)
 where
@@ -286,13 +286,13 @@ impl Drop for IconHandle {
 }
 
 fn get_active_app_icon_b64(exe_path: &str) -> Option<String> {
-    use base64::engine::general_purpose::STANDARD;
     use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
     use windows::Win32::Graphics::Gdi::{
-        CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW,
-        SelectObject, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        BI_RGB, BITMAP, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleBitmap, CreateCompatibleDC,
+        DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDIBits, GetObjectW, SelectObject,
     };
-    use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+    use windows::Win32::UI::Shell::{SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGetFileInfoW};
     use windows::Win32::UI::WindowsAndMessaging::{GetIconInfo, ICONINFO};
 
     // Check cache first

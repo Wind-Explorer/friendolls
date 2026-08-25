@@ -1,6 +1,8 @@
 mod cursor;
 mod db;
 mod friends;
+mod images;
+mod interactions;
 mod keypair;
 mod live_data;
 mod network;
@@ -16,6 +18,7 @@ async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     let handle = app.handle();
     db::init(handle).await?;
     keypair::init(handle).await?;
+    app.manage(interactions::InteractionState::default());
     network::init(handle).await?;
     app.manage(ufa::ForegroundAppState::default());
     app.manage(cursor::CursorState::default());
@@ -38,6 +41,7 @@ pub fn run() {
         .expect("Failed to export TypeScript bindings");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(specta_builder.invoke_handler())
         .setup(move |app| {
@@ -67,6 +71,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             profile::update_profile,
             keypair::get_public_key,
             network::list_statuses,
+            images::pick_and_send_image,
+            images::send_image_bytes,
+            interactions::send_interaction,
             ui::scene::update_scene_hitboxes,
         ])
         .events(tauri_specta::collect_events![
@@ -77,6 +84,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             cursor::CursorPositionChanged,
             ufa::ForegroundAppChanged,
             ufa::FriendForegroundAppChanged,
+            interactions::FriendInteractionReceived,
         ])
 }
 

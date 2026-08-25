@@ -15,6 +15,9 @@
     triggerClass?: string;
     panelClass?: string;
     panelStyle?: string;
+    closeOnOutsidePointer?: boolean;
+    closeOnWindowBlur?: boolean;
+    closeOnFocusOut?: boolean;
   };
 
   let {
@@ -29,6 +32,9 @@
     triggerClass = "",
     panelClass = "",
     panelStyle,
+    closeOnOutsidePointer: dismissOnOutsidePointer = true,
+    closeOnWindowBlur: dismissOnWindowBlur = true,
+    closeOnFocusOut: dismissOnFocusOut = true,
   }: Props = $props();
 
   let root = $state<HTMLDivElement>();
@@ -57,6 +63,7 @@
   function closeOnOutsidePointer(event: PointerEvent) {
     if (
       open &&
+      dismissOnOutsidePointer &&
       root &&
       event.target instanceof Node &&
       !root.contains(event.target)
@@ -68,6 +75,7 @@
   function closeOnFocusOut(event: FocusEvent) {
     if (
       open &&
+      dismissOnFocusOut &&
       root &&
       (!(event.relatedTarget instanceof Node) ||
         !root.contains(event.relatedTarget))
@@ -77,7 +85,7 @@
   }
 
   function closeOnWindowBlur() {
-    if (open) setOpen(false);
+    if (open && dismissOnWindowBlur) setOpen(false);
   }
 </script>
 

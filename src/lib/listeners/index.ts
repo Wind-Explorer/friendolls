@@ -1,5 +1,6 @@
 import { initConnectionStatusesListener } from "./connection-status";
 import { initFriendsListener } from "./friends";
+import { initInteractionListener } from "./interactions";
 import { initLiveMetadataListeners } from "./live-metadata";
 import { initProfileListener } from "./profile";
 import { initRemotesListener } from "./remotes";
@@ -16,6 +17,7 @@ export function initAppListeners(): Unlisten {
     initProfileListener(),
     initConnectionStatusesListener(),
     initLiveMetadataListeners(),
+    initInteractionListener(),
   ])
     .then((results) => {
       const listeners = results.flatMap((result) =>

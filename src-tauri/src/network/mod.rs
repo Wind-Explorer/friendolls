@@ -3,20 +3,22 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use futures_util::stream::FuturesUnordered;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
 use wyd_common::{
-    ClientMessage, Profile, ServerMessage, friends_bytes, message_bytes, profile_bytes,
-    register_bytes,
+    ClientMessage, InteractionContent, InteractionDeliveryStatus, Profile, ServerMessage,
+    friends_bytes, interaction_bytes, message_bytes, profile_bytes, register_bytes,
 };
 
 use crate::db::AppDatabase;
 use crate::friends::{self, FriendsChanged};
+use crate::interactions;
 use crate::keypair::AppKeypair;
 use crate::live_data::LiveData;
 use crate::remotes::{self, Remote, RemotesChanged};
@@ -49,8 +51,16 @@ pub struct NetworkStatusChanged {
 struct Connection {
     remote: Remote,
     sender: mpsc::Sender<String>,
+    interaction_sender: mpsc::Sender<InteractionRequest>,
     task: tauri::async_runtime::JoinHandle<()>,
     generation: u64,
+}
+
+struct InteractionRequest {
+    interaction_id: String,
+    recipient_id: String,
+    payload: String,
+    response: oneshot::Sender<InteractionDeliveryStatus>,
 }
 
 pub struct Network {
@@ -86,6 +96,66 @@ impl Network {
         self.profile.send_replace(profile);
     }
 
+    pub async fn send_interaction(
+        &self,
+        recipient_id: String,
+        content: InteractionContent,
+    ) -> Result<(), String> {
+        if recipient_id == self.keypair.public_key() {
+            return Err("Interactions can only be sent to a friend".to_owned());
+        }
+        let payload = serde_json::to_string(&content).map_err(|error| error.to_string())?;
+        let interaction_id = uuid::Uuid::new_v4().to_string();
+        let senders: Vec<_> = self
+            .connections
+            .lock()
+            .map_err(|error| error.to_string())?
+            .values()
+            .map(|connection| connection.interaction_sender.clone())
+            .collect();
+        if senders.is_empty() {
+            return Err("No relay connections are configured".to_owned());
+        }
+
+        let mut responses = Vec::new();
+        for sender in senders {
+            let (response, receiver) = oneshot::channel();
+            let request = InteractionRequest {
+                interaction_id: interaction_id.clone(),
+                recipient_id: recipient_id.clone(),
+                payload: payload.clone(),
+                response,
+            };
+            if sender.try_send(request).is_ok() {
+                responses.push(receiver);
+            }
+        }
+        if responses.is_empty() {
+            return Err("Relay connections are busy or disconnected".to_owned());
+        }
+
+        let mut pending: FuturesUnordered<_> = responses
+            .into_iter()
+            .map(|response| tokio::time::timeout(Duration::from_secs(5), response))
+            .collect();
+        let mut statuses = Vec::new();
+        while let Some(result) = pending.next().await {
+            if let Ok(Ok(status)) = result {
+                if status == InteractionDeliveryStatus::Delivered {
+                    return Ok(());
+                }
+                statuses.push(status);
+            }
+        }
+        if statuses.contains(&InteractionDeliveryStatus::Busy) {
+            return Err("Friend is busy; try again".to_owned());
+        }
+        if statuses.contains(&InteractionDeliveryStatus::Rejected) {
+            return Err("Relay rejected the interaction".to_owned());
+        }
+        Err("Friend is no longer available".to_owned())
+    }
+
     fn sync_remotes(&self, handle: &AppHandle, remotes: Vec<Remote>) -> Result<(), String> {
         let desired: HashMap<_, _> = remotes
             .into_iter()
@@ -113,6 +183,7 @@ impl Network {
 
             let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
             let (sender, receiver) = mpsc::channel(32);
+            let (interaction_sender, interaction_receiver) = mpsc::channel(16);
             set_initial(
                 &self.statuses,
                 &remote,
@@ -128,12 +199,14 @@ impl Network {
                 self.friends.subscribe(),
                 self.keypair.clone(),
                 receiver,
+                interaction_receiver,
             ));
             connections.insert(
                 remote.id.clone(),
                 Connection {
                     remote,
                     sender,
+                    interaction_sender,
                     task,
                     generation,
                 },
@@ -195,6 +268,7 @@ async fn run(
     mut friends: watch::Receiver<Vec<String>>,
     keypair: AppKeypair,
     mut outgoing: mpsc::Receiver<String>,
+    mut active_outgoing: mpsc::Receiver<InteractionRequest>,
 ) {
     loop {
         changed(
@@ -213,6 +287,7 @@ async fn run(
             &mut friends,
             &keypair,
             &mut outgoing,
+            &mut active_outgoing,
         )
         .await
         {
@@ -238,6 +313,7 @@ async fn connect(
     friends: &mut watch::Receiver<Vec<String>>,
     keypair: &AppKeypair,
     outgoing: &mut mpsc::Receiver<String>,
+    active_outgoing: &mut mpsc::Receiver<InteractionRequest>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (socket, _) = tokio_tungstenite::connect_async(url(remote)).await?;
     let (mut writer, mut reader) = socket.split();
@@ -272,6 +348,11 @@ async fn connect(
         return Err("server rejected registration".into());
     }
     while outgoing.try_recv().is_ok() {}
+    while let Ok(request) = active_outgoing.try_recv() {
+        let _ = request
+            .response
+            .send(InteractionDeliveryStatus::Unavailable);
+    }
     send(&mut writer, &ClientMessage::SyncFriendProfiles).await?;
     changed(
         handle,
@@ -281,6 +362,7 @@ async fn connect(
         ConnectionState::Connected,
     );
 
+    let mut pending_interactions = HashMap::new();
     loop {
         tokio::select! {
             payload = outgoing.recv() => {
@@ -289,6 +371,21 @@ async fn connect(
                     signature: keypair.sign(&message_bytes(&payload)),
                     payload,
                 }).await?;
+            }
+            request = active_outgoing.recv() => {
+                let request = request.ok_or("interaction sender closed")?;
+                let signature = keypair.sign(&interaction_bytes(
+                    &request.interaction_id,
+                    &request.recipient_id,
+                    &request.payload,
+                ));
+                send(&mut writer, &ClientMessage::Interaction {
+                    interaction_id: request.interaction_id.clone(),
+                    recipient_id: request.recipient_id,
+                    payload: request.payload,
+                    signature,
+                }).await?;
+                pending_interactions.insert(request.interaction_id, request.response);
             }
             changed = profiles.changed() => {
                 changed.map_err(|_| "profile sender closed")?;
@@ -335,6 +432,18 @@ async fn connect(
                             Err(error) => {
                                 eprintln!("failed to decode friend live data: {error}");
                             }
+                        }
+                    }
+                    ServerMessage::FriendInteraction {
+                        interaction_id,
+                        friend_id,
+                        payload,
+                    } => {
+                        interactions::receive(handle, interaction_id, friend_id, &payload);
+                    }
+                    ServerMessage::InteractionDelivery { interaction_id, status } => {
+                        if let Some(response) = pending_interactions.remove(&interaction_id) {
+                            let _ = response.send(status);
                         }
                     }
                     _ => {}

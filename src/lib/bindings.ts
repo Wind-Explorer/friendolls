@@ -44,6 +44,15 @@ async getPublicKey() : Promise<string> {
 async listStatuses() : Promise<ConnectionStatus[]> {
     return await TAURI_INVOKE("list_statuses");
 },
+async pickAndSendImage(recipientId: string) : Promise<boolean> {
+    return await TAURI_INVOKE("pick_and_send_image", { recipientId });
+},
+async sendImageBytes(recipientId: string, bytes: number[]) : Promise<null> {
+    return await TAURI_INVOKE("send_image_bytes", { recipientId, bytes });
+},
+async sendInteraction(recipientId: string, content: InteractionContent) : Promise<null> {
+    return await TAURI_INVOKE("send_interaction", { recipientId, content });
+},
 async updateSceneHitboxes(hitboxes: SceneHitbox[]) : Promise<null> {
     return await TAURI_INVOKE("update_scene_hitboxes", { hitboxes });
 }
@@ -56,6 +65,7 @@ export const events = __makeEvents__<{
 cursorPositionChanged: CursorPositionChanged,
 foregroundAppChanged: ForegroundAppChanged,
 friendForegroundAppChanged: FriendForegroundAppChanged,
+friendInteractionReceived: FriendInteractionReceived,
 friendsChanged: FriendsChanged,
 networkStatusChanged: NetworkStatusChanged,
 profileChanged: ProfileChanged,
@@ -64,6 +74,7 @@ remotesChanged: RemotesChanged
 cursorPositionChanged: "cursor-position-changed",
 foregroundAppChanged: "foreground-app-changed",
 friendForegroundAppChanged: "friend-foreground-app-changed",
+friendInteractionReceived: "friend-interaction-received",
 friendsChanged: "friends-changed",
 networkStatusChanged: "network-status-changed",
 profileChanged: "profile-changed",
@@ -95,7 +106,9 @@ raw: CursorPosition;
 mapped: CursorPosition }
 export type ForegroundAppChanged = { meta: AppMeta }
 export type FriendForegroundAppChanged = { friendId: string; meta: AppMeta }
+export type FriendInteractionReceived = { interactionId: string; friendId: string; content: InteractionContent }
 export type FriendsChanged = { friends: User[] }
+export type InteractionContent = { type: "text"; text: string } | { type: "wave" } | { type: "image"; mediaType: string; data: string }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
 export type ProfileChanged = { profile: User }
 export type Remote = { id: string; address: string; name: string | null; port: number | null }

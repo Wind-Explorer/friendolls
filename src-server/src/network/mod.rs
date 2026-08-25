@@ -18,6 +18,8 @@ use wyd_common::{
     register_bytes,
 };
 
+mod interactions;
+
 type Clients = Arc<Mutex<HashMap<String, Client>>>;
 
 struct Client {
@@ -25,9 +27,7 @@ struct Client {
     key: VerifyingKey,
     #[allow(dead_code)] // Used when presence and profile lookup are exposed.
     profile: Profile,
-    #[allow(dead_code)] // Used when friend-authorized message routing is added.
     friends: Vec<String>,
-    #[allow(dead_code)] // Used when server-side message routing is added.
     sender: mpsc::Sender<Message>,
 }
 
@@ -109,6 +109,31 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
                 Some(Ok(Message::Text(text))) => match serde_json::from_str(&text) {
                     Ok(ClientMessage::Signed { payload, signature }) => {
                         if !relay_live_data(&clients, &public_key, connection_id, payload, &signature).await {
+                            break;
+                        }
+                    }
+                    Ok(ClientMessage::Interaction {
+                        interaction_id,
+                        recipient_id,
+                        payload,
+                        signature,
+                    }) => {
+                        let Some(status) = interactions::relay(
+                            &clients,
+                            &public_key,
+                            connection_id,
+                            &interaction_id,
+                            &recipient_id,
+                            payload,
+                            &signature,
+                        ).await else {
+                            break;
+                        };
+                        let response = ServerMessage::InteractionDelivery {
+                            interaction_id,
+                            status,
+                        };
+                        if writer.send(Message::Text(serde_json::to_string(&response).unwrap().into())).await.is_err() {
                             break;
                         }
                     }
