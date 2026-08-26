@@ -1,9 +1,131 @@
 <script lang="ts">
-  //
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import ActivityPanel from "$lib/components/control-panel/activity-panel.svelte";
+  import FriendsPanel from "$lib/components/control-panel/friends-panel.svelte";
+  import GeneralPanel from "$lib/components/control-panel/general-panel.svelte";
+  import NetworkPanel from "$lib/components/control-panel/network-panel.svelte";
+  import type {
+    PanelActions,
+    PanelState,
+  } from "$lib/components/control-panel/types";
+
+  const tabs = [
+    { id: "general", label: "General" },
+    { id: "friends", label: "Friends" },
+    { id: "network", label: "Network" },
+    { id: "activity", label: "Activity" },
+  ] as const;
+  type TabId = (typeof tabs)[number]["id"];
+
+  let activeTab = $state<TabId>("general");
+  let actions: Partial<Record<TabId, PanelActions>> = {};
+  let panelStates = $state<Record<TabId, PanelState>>({
+    general: { dirty: false, busy: false },
+    friends: { dirty: false, busy: false },
+    network: { dirty: false, busy: false },
+    activity: { dirty: false, busy: false },
+  });
+  let anyDirty = $derived(tabs.some((tab) => panelStates[tab.id].dirty));
+  let anyBusy = $derived(tabs.some((tab) => panelStates[tab.id].busy));
+
+  function register(
+    name: string,
+    nextActions: PanelActions,
+    state: PanelState,
+  ) {
+    const id = name as TabId;
+    actions[id] = nextActions;
+    if (
+      panelStates[id].dirty !== state.dirty ||
+      panelStates[id].busy !== state.busy
+    ) {
+      panelStates[id] = state;
+    }
+  }
+
+  async function applyAll() {
+    for (const tab of tabs) {
+      if (!panelStates[tab.id].dirty) continue;
+      if (!(await actions[tab.id]?.apply())) {
+        activeTab = tab.id;
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async function hideWindow() {
+    try {
+      await getCurrentWindow().hide();
+    } catch (error) {
+      console.error("failed to hide control panel", error);
+    }
+  }
+
+  async function confirm() {
+    if (await applyAll()) await hideWindow();
+  }
+
+  function cancel() {
+    tabs.forEach((tab) => actions[tab.id]?.reset());
+    void hideWindow();
+  }
 </script>
 
-<section>
-  <div>
-    <p>Control panel</p>
+<svelte:head><title>Wyd Properties</title></svelte:head>
+
+<main
+  class="flex h-full min-h-0 flex-col overflow-hidden bg-base-100 p-2 text-base-content"
+>
+  <div class="tabs tabs-lift min-h-0 flex-1">
+    {#each tabs as tab}
+      <input
+        id={`${tab.id}-tab`}
+        type="radio"
+        name="control_panel_tabs"
+        class="tab"
+        aria-label={`${tab.label}${panelStates[tab.id].dirty ? " *" : ""}`}
+        value={tab.id}
+        bind:group={activeTab}
+      />
+      <div
+        class="tab-content h-[calc(100%-1.75rem)] w-full overflow-hidden border border-base-300 bg-base-100 p-3"
+        role="tabpanel"
+        aria-labelledby={`${tab.id}-tab`}
+      >
+        <div class="h-full">
+          {#if tab.id === "general"}
+            <GeneralPanel {register} />
+          {:else if tab.id === "friends"}
+            <FriendsPanel {register} />
+          {:else if tab.id === "network"}
+            <NetworkPanel {register} />
+          {:else}
+            <ActivityPanel {register} />
+          {/if}
+        </div>
+      </div>
+    {/each}
   </div>
-</section>
+
+  <div class="flex shrink-0 justify-end gap-1.5 pt-2">
+    <button
+      class="btn min-w-16"
+      type="button"
+      disabled={anyBusy}
+      onclick={confirm}>OK</button
+    >
+    <button
+      class="btn min-w-16"
+      type="button"
+      disabled={anyBusy}
+      onclick={cancel}>Cancel</button
+    >
+    <button
+      class="btn min-w-16"
+      type="button"
+      disabled={!anyDirty || anyBusy}
+      onclick={applyAll}>{anyBusy ? "Applying…" : "Apply"}</button
+    >
+  </div>
+</main>

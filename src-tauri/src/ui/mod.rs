@@ -1,6 +1,6 @@
 use tauri::AppHandle;
 
-mod control_panel;
+pub mod control_panel;
 #[cfg(debug_assertions)]
 mod debug;
 pub mod scene;

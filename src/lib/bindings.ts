@@ -56,6 +56,9 @@ async sendImageBytes(recipientId: string, bytes: number[]) : Promise<null> {
 async sendInteraction(recipientId: string, content: InteractionContent) : Promise<null> {
     return await TAURI_INVOKE("send_interaction", { recipientId, content });
 },
+async openActionWindow(name: string, title: string, pageUrl: string) : Promise<null> {
+    return await TAURI_INVOKE("open_action_window", { name, title, pageUrl });
+},
 async updateSceneHitboxes(hitboxes: SceneHitbox[]) : Promise<null> {
     return await TAURI_INVOKE("update_scene_hitboxes", { hitboxes });
 }

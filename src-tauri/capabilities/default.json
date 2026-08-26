@@ -2,9 +2,11 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for Wyd UI windows",
-  "windows": ["debug", "scene"],
+  "windows": ["control-panel", "control-panel-action-*", "debug", "scene"],
   "permissions": [
     "core:default",
+    "core:window:allow-close",
+    "core:window:allow-hide",
     "opener:default"
   ]
 }

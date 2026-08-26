@@ -75,6 +75,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             images::pick_and_send_image,
             images::send_image_bytes,
             interactions::send_interaction,
+            ui::control_panel::open_action_window,
             ui::scene::update_scene_hitboxes,
         ])
         .events(tauri_specta::collect_events![
