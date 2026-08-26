@@ -5,11 +5,7 @@ const ACTION_WINDOW_PREFIX: &str = "control-panel-action-";
 
 pub fn init(handle: &AppHandle) {
     if let Some(window) = handle.get_webview_window(WINDOW_LABEL) {
-        if !window.is_visible().unwrap() {
-            window.center().unwrap();
-            window.show().unwrap();
-        };
-        window.set_focus().unwrap();
+        window.hide().unwrap();
         return;
     };
 
@@ -23,9 +19,11 @@ pub fn init(handle: &AppHandle) {
     .min_inner_size(400.0, 600.0)
     .resizable(false)
     .maximizable(false)
-    .visible(true);
+    .center()
+    .visible(false);
 
     let window = builder.build().unwrap();
+    window.hide().unwrap();
     let window_c = window.clone();
     window.on_window_event(move |event: &tauri::WindowEvent| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -33,6 +31,16 @@ pub fn init(handle: &AppHandle) {
             window_c.hide().unwrap();
         }
     });
+}
+
+pub fn show(handle: &AppHandle) -> Result<(), String> {
+    let window = handle
+        .get_webview_window(WINDOW_LABEL)
+        .ok_or_else(|| "Control panel window was not created during startup.".to_string())?;
+
+    window.unminimize().map_err(|error| error.to_string())?;
+    window.show().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
