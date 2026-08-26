@@ -1,10 +1,10 @@
 <script>
-  import FriendsList from "$lib/components/friends-list.svelte";
-  import FriendStatuses from "$lib/components/friend-statuses.svelte";
-  import ConnectionStatus from "$lib/components/connection-status.svelte";
-  import Profile from "$lib/components/profile.svelte";
-  import RemotesList from "$lib/components/remotes-list.svelte";
-  import LiveMetadata from "$lib/components/live-metadata.svelte";
+  import FriendsList from "$lib/components/debug/friends-list.svelte";
+  import FriendStatuses from "$lib/components/debug/friend-statuses.svelte";
+  import ConnectionStatus from "$lib/components/debug/connection-status.svelte";
+  import Profile from "$lib/components/debug/profile.svelte";
+  import RemotesList from "$lib/components/debug/remotes-list.svelte";
+  import LiveMetadata from "$lib/components/debug/live-metadata.svelte";
 </script>
 
 <main>
