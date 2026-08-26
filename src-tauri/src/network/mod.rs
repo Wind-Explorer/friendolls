@@ -23,6 +23,10 @@ use crate::keypair::AppKeypair;
 use crate::live_data::LiveData;
 use crate::remotes::{self, Remote, RemotesChanged};
 
+mod presence;
+
+use presence::{Change as FriendPresenceChange, FriendPresence};
+
 type Statuses = Arc<Mutex<HashMap<String, (u64, ConnectionStatus)>>>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -48,6 +52,12 @@ pub struct NetworkStatusChanged {
     pub statuses: Vec<ConnectionStatus>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct FriendStatusesChanged {
+    pub friend_ids: Vec<String>,
+}
+
 struct Connection {
     remote: Remote,
     sender: mpsc::Sender<String>,
@@ -66,6 +76,7 @@ struct InteractionRequest {
 pub struct Network {
     connections: Mutex<HashMap<String, Connection>>,
     statuses: Statuses,
+    friend_presence: Arc<FriendPresence>,
     profile: watch::Sender<crate::user::User>,
     friends: watch::Sender<Vec<String>>,
     keypair: AppKeypair,
@@ -173,6 +184,7 @@ impl Network {
             if let Some(connection) = connections.remove(&id) {
                 connection.task.abort();
                 remove_status(&self.statuses, &id, connection.generation);
+                apply_friend_presence_change(handle, self.friend_presence.remove(&id));
             }
         }
 
@@ -193,6 +205,7 @@ impl Network {
             let task = tauri::async_runtime::spawn(run(
                 handle.clone(),
                 self.statuses.clone(),
+                self.friend_presence.clone(),
                 remote.clone(),
                 generation,
                 self.profile.subscribe(),
@@ -228,6 +241,7 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     let network = Network {
         connections: Mutex::new(HashMap::new()),
         statuses: Statuses::default(),
+        friend_presence: Arc::default(),
         profile,
         friends,
         keypair,
@@ -252,9 +266,10 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             if *current == ids {
                 return false;
             }
-            *current = ids;
+            *current = ids.clone();
             true
         });
+        apply_friend_presence_change(&listener_handle, network.friend_presence.retain(&ids));
     });
     Ok(())
 }
@@ -262,6 +277,7 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
 async fn run(
     handle: AppHandle,
     statuses: Statuses,
+    friend_presence: Arc<FriendPresence>,
     remote: Remote,
     generation: u64,
     mut profiles: watch::Receiver<crate::user::User>,
@@ -281,6 +297,7 @@ async fn run(
         if let Err(error) = connect(
             &handle,
             &statuses,
+            &friend_presence,
             &remote,
             generation,
             &mut profiles,
@@ -293,6 +310,7 @@ async fn run(
         {
             eprintln!("remote {} disconnected: {error}", remote.id);
         }
+        apply_friend_presence_change(&handle, friend_presence.remove(&remote.id));
         changed(
             &handle,
             &statuses,
@@ -307,6 +325,7 @@ async fn run(
 async fn connect(
     handle: &AppHandle,
     statuses: &Statuses,
+    friend_presence: &FriendPresence,
     remote: &Remote,
     generation: u64,
     profiles: &mut watch::Receiver<crate::user::User>,
@@ -354,6 +373,7 @@ async fn connect(
             .send(InteractionDeliveryStatus::Unavailable);
     }
     send(&mut writer, &ClientMessage::SyncFriendProfiles).await?;
+    send(&mut writer, &ClientMessage::SyncFriendStatuses).await?;
     changed(
         handle,
         statuses,
@@ -421,6 +441,21 @@ async fn connect(
                             eprintln!("failed to synchronize friend profiles: {error}");
                         }
                     }
+                    ServerMessage::FriendStatusChanged { friend_id, online } => {
+                        update_friend_presence(
+                            handle,
+                            friend_presence,
+                            &remote.id,
+                            friend_id,
+                            online,
+                        );
+                    }
+                    ServerMessage::FriendStatuses { friend_ids } => {
+                        apply_friend_presence_change(
+                            handle,
+                            friend_presence.replace(&remote.id, friend_ids),
+                        );
+                    }
                     ServerMessage::FriendLiveData { friend_id, payload } => {
                         match serde_json::from_str(&payload) {
                             Ok(LiveData::Cursor { positions }) => {
@@ -469,6 +504,42 @@ pub fn list_statuses(
     .emit(&handle)
     .map_err(|error| error.to_string())?;
     Ok(statuses)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_friend_statuses(network: State<'_, Network>) -> Result<Vec<String>, String> {
+    network.friend_presence.snapshot()
+}
+
+fn update_friend_presence(
+    handle: &AppHandle,
+    presence: &FriendPresence,
+    remote_id: &str,
+    friend_id: String,
+    online: bool,
+) {
+    apply_friend_presence_change(handle, presence.update(remote_id, friend_id, online));
+}
+
+fn apply_friend_presence_change(
+    handle: &AppHandle,
+    result: Result<Option<FriendPresenceChange>, String>,
+) {
+    match result {
+        Ok(Some(change)) => {
+            crate::cursor::remove_positions(handle, &change.went_offline);
+            if let Err(error) = (FriendStatusesChanged {
+                friend_ids: change.online,
+            })
+            .emit(handle)
+            {
+                eprintln!("failed to emit friend statuses: {error}");
+            }
+        }
+        Ok(None) => {}
+        Err(error) => eprintln!("failed to update friend presence: {error}"),
+    }
 }
 
 fn changed(

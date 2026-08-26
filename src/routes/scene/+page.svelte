@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Popover from "$lib/components/popover.svelte";
   import { friends } from "$lib/listeners/friends";
+  import { onlineFriendIds } from "$lib/listeners/friend-statuses";
   import { incomingInteraction } from "$lib/listeners/interactions";
   import { liveMetadata } from "$lib/listeners/live-metadata";
   import { profile } from "$lib/listeners/profile";
@@ -26,6 +27,18 @@
       duration,
     );
     return () => window.clearTimeout(timer);
+  });
+
+  $effect(() => {
+    if (
+      selectedUserId &&
+      selectedUserId !== $liveMetadata.localId &&
+      !$onlineFriendIds.has(selectedUserId)
+    ) {
+      selectedUserId = null;
+      selectedUserX = null;
+      lockedPopoverUserId = null;
+    }
   });
 
   function displayName(userId: string) {
@@ -65,7 +78,7 @@
       {@const popoverId = `scene-user-${index}`}
       {@const interaction =
         $incomingInteraction?.friendId === userId ? $incomingInteraction : null}
-      {#if cursor}
+      {#if cursor && (userId === $liveMetadata.localId || $onlineFriendIds.has(userId))}
         {@const renderedX =
           selectedUserId === userId ? selectedUserX : cursor.mapped.x}
         <div

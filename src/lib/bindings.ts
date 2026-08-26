@@ -44,6 +44,9 @@ async getPublicKey() : Promise<string> {
 async listStatuses() : Promise<ConnectionStatus[]> {
     return await TAURI_INVOKE("list_statuses");
 },
+async listFriendStatuses() : Promise<string[]> {
+    return await TAURI_INVOKE("list_friend_statuses");
+},
 async pickAndSendImage(recipientId: string) : Promise<boolean> {
     return await TAURI_INVOKE("pick_and_send_image", { recipientId });
 },
@@ -66,6 +69,7 @@ cursorPositionChanged: CursorPositionChanged,
 foregroundAppChanged: ForegroundAppChanged,
 friendForegroundAppChanged: FriendForegroundAppChanged,
 friendInteractionReceived: FriendInteractionReceived,
+friendStatusesChanged: FriendStatusesChanged,
 friendsChanged: FriendsChanged,
 networkStatusChanged: NetworkStatusChanged,
 profileChanged: ProfileChanged,
@@ -75,6 +79,7 @@ cursorPositionChanged: "cursor-position-changed",
 foregroundAppChanged: "foreground-app-changed",
 friendForegroundAppChanged: "friend-foreground-app-changed",
 friendInteractionReceived: "friend-interaction-received",
+friendStatusesChanged: "friend-statuses-changed",
 friendsChanged: "friends-changed",
 networkStatusChanged: "network-status-changed",
 profileChanged: "profile-changed",
@@ -107,6 +112,7 @@ mapped: CursorPosition }
 export type ForegroundAppChanged = { meta: AppMeta }
 export type FriendForegroundAppChanged = { friendId: string; meta: AppMeta }
 export type FriendInteractionReceived = { interactionId: string; friendId: string; content: InteractionContent }
+export type FriendStatusesChanged = { friendIds: string[] }
 export type FriendsChanged = { friends: User[] }
 export type InteractionContent = { type: "text"; text: string } | { type: "wave" } | { type: "image"; mediaType: string; data: string }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }

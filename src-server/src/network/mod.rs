@@ -14,11 +14,11 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
 use wyd_common::{
-    ClientMessage, Profile, ServerMessage, friends_bytes, message_bytes, profile_bytes,
-    register_bytes,
+    ClientMessage, Profile, ServerMessage, message_bytes, profile_bytes, register_bytes,
 };
 
 mod interactions;
+mod presence;
 
 type Clients = Arc<Mutex<HashMap<String, Client>>>;
 
@@ -29,6 +29,11 @@ struct Client {
     profile: Profile,
     friends: Vec<String>,
     sender: mpsc::Sender<Message>,
+}
+
+fn are_mutual_friends(source_id: &str, source: &Client, friend_id: &str, friend: &Client) -> bool {
+    source.friends.iter().any(|id| id == friend_id)
+        && friend.friends.iter().any(|id| id == source_id)
 }
 
 pub fn routes() -> Router {
@@ -79,20 +84,25 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
     let connection_id = Uuid::new_v4();
     let public_key = profile.id.clone();
     let (sender, mut outgoing) = mpsc::channel(32);
-    clients.lock().await.insert(
-        public_key.clone(),
-        Client {
-            connection_id,
-            key,
-            profile,
-            friends,
-            sender,
-        },
-    );
+    let previous_friends = clients
+        .lock()
+        .await
+        .insert(
+            public_key.clone(),
+            Client {
+                connection_id,
+                key,
+                profile,
+                friends,
+                sender,
+            },
+        )
+        .map(|client| client.friends);
     if send(&mut socket, &ServerMessage::Registered).await.is_err() {
-        remove(&clients, &public_key, connection_id).await;
+        presence::disconnected(&clients, &public_key, connection_id).await;
         return;
     }
+    presence::connected(&clients, &public_key, previous_friends).await;
 
     let (mut writer, mut reader) = socket.split();
     let mut ping = tokio::time::interval(Duration::from_secs(20));
@@ -143,7 +153,17 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
                         }
                     }
                     Ok(ClientMessage::FriendsUpdated { friends, signature }) => {
-                        if !update_friends(&clients, &public_key, connection_id, friends, &signature).await {
+                        let Some(friend_ids) = presence::update_friends(
+                            &clients,
+                            &public_key,
+                            connection_id,
+                            friends,
+                            &signature,
+                        ).await else {
+                            break;
+                        };
+                        let message = ServerMessage::FriendStatuses { friend_ids };
+                        if writer.send(Message::Text(serde_json::to_string(&message).unwrap().into())).await.is_err() {
                             break;
                         }
                     }
@@ -152,6 +172,15 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
                             break;
                         };
                         let message = ServerMessage::FriendProfiles { profiles };
+                        if writer.send(Message::Text(serde_json::to_string(&message).unwrap().into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Ok(ClientMessage::SyncFriendStatuses) => {
+                        let Some(friend_ids) = presence::snapshot(&clients, &public_key, connection_id).await else {
+                            break;
+                        };
+                        let message = ServerMessage::FriendStatuses { friend_ids };
                         if writer.send(Message::Text(serde_json::to_string(&message).unwrap().into())).await.is_err() {
                             break;
                         }
@@ -167,7 +196,7 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
         }
     }
 
-    remove(&clients, &public_key, connection_id).await;
+    presence::disconnected(&clients, &public_key, connection_id).await;
 }
 
 async fn update_profile(
@@ -206,27 +235,6 @@ async fn update_profile(
     for recipient in recipients {
         let _ = recipient.send(message.clone()).await;
     }
-    true
-}
-
-async fn update_friends(
-    clients: &Clients,
-    public_key: &str,
-    connection_id: Uuid,
-    friends: Vec<String>,
-    signature: &str,
-) -> bool {
-    let mut clients = clients.lock().await;
-    let Some(client) = clients
-        .get_mut(public_key)
-        .filter(|client| client.connection_id == connection_id)
-    else {
-        return false;
-    };
-    if !verify(&client.key, &friends_bytes(&friends), signature) {
-        return false;
-    }
-    client.friends = friends;
     true
 }
 
@@ -270,8 +278,7 @@ async fn relay_live_data(
         .iter()
         .filter(|(recipient_id, recipient)| {
             recipient_id.as_str() != public_key
-                && source.friends.iter().any(|friend| friend == *recipient_id)
-                && recipient.friends.iter().any(|friend| friend == public_key)
+                && are_mutual_friends(public_key, source, recipient_id, recipient)
         })
         .map(|(_, recipient)| recipient.sender.clone())
         .collect();
@@ -289,16 +296,6 @@ async fn relay_live_data(
         let _ = recipient.try_send(message.clone());
     }
     true
-}
-
-async fn remove(clients: &Clients, public_key: &str, connection_id: Uuid) {
-    let mut clients = clients.lock().await;
-    if clients
-        .get(public_key)
-        .is_some_and(|client| client.connection_id == connection_id)
-    {
-        clients.remove(public_key);
-    }
 }
 
 async fn send(socket: &mut WebSocket, message: &ServerMessage) -> Result<(), axum::Error> {
@@ -328,6 +325,7 @@ fn verify(key: &VerifyingKey, bytes: &[u8], signature: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use ed25519_dalek::{Signer, SigningKey};
+    use wyd_common::friends_bytes;
 
     use super::*;
 
@@ -492,7 +490,7 @@ mod tests {
             URL_SAFE_NO_PAD.encode(signing_key.sign(&friends_bytes(&friends)).to_bytes());
 
         assert!(
-            update_friends(
+            presence::update_friends(
                 &clients,
                 &public_key,
                 connection_id,
@@ -500,6 +498,7 @@ mod tests {
                 &signature,
             )
             .await
+            .is_some()
         );
         assert_eq!(
             clients.lock().await.get(&public_key).unwrap().friends,
@@ -563,6 +562,108 @@ mod tests {
                 .await
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn presence_sync_and_disconnect_broadcast_require_mutual_friendship() {
+        let signing_key = SigningKey::from_bytes(&[7; 32]);
+        let connection_id = Uuid::new_v4();
+        let (source_sender, _source_receiver) = mpsc::channel(4);
+        let (mutual_sender, mut mutual_receiver) = mpsc::channel(4);
+        let (one_way_sender, mut one_way_receiver) = mpsc::channel(4);
+        let clients = Clients::default();
+        let mut registry = clients.lock().await;
+        registry.insert(
+            "source".to_owned(),
+            Client {
+                connection_id,
+                key: signing_key.verifying_key(),
+                profile: Profile {
+                    id: "source".to_owned(),
+                    display_name: "Source".to_owned(),
+                },
+                friends: vec!["mutual".to_owned()],
+                sender: source_sender,
+            },
+        );
+        registry.insert(
+            "mutual".to_owned(),
+            Client {
+                connection_id: Uuid::new_v4(),
+                key: signing_key.verifying_key(),
+                profile: Profile {
+                    id: "mutual".to_owned(),
+                    display_name: "Mutual".to_owned(),
+                },
+                friends: vec!["source".to_owned()],
+                sender: mutual_sender,
+            },
+        );
+        registry.insert(
+            "one-way".to_owned(),
+            Client {
+                connection_id: Uuid::new_v4(),
+                key: signing_key.verifying_key(),
+                profile: Profile {
+                    id: "one-way".to_owned(),
+                    display_name: "One way".to_owned(),
+                },
+                friends: vec!["source".to_owned()],
+                sender: one_way_sender,
+            },
+        );
+        drop(registry);
+
+        assert_eq!(
+            presence::snapshot(&clients, "source", connection_id)
+                .await
+                .expect("current session"),
+            ["mutual"]
+        );
+        assert!(
+            presence::snapshot(&clients, "source", Uuid::new_v4())
+                .await
+                .is_none()
+        );
+
+        presence::broadcast_status(&clients, "source", true).await;
+        assert_friend_status(mutual_receiver.recv().await, "source", true);
+        assert!(one_way_receiver.try_recv().is_err());
+
+        let no_friends = Vec::new();
+        let signature =
+            URL_SAFE_NO_PAD.encode(signing_key.sign(&friends_bytes(&no_friends)).to_bytes());
+        assert_eq!(
+            presence::update_friends(&clients, "source", connection_id, no_friends, &signature,)
+                .await,
+            Some(Vec::new())
+        );
+        assert_friend_status(mutual_receiver.recv().await, "source", false);
+
+        let mutual_friends = vec!["mutual".to_owned()];
+        let signature =
+            URL_SAFE_NO_PAD.encode(signing_key.sign(&friends_bytes(&mutual_friends)).to_bytes());
+        assert_eq!(
+            presence::update_friends(
+                &clients,
+                "source",
+                connection_id,
+                mutual_friends,
+                &signature,
+            )
+            .await,
+            Some(vec!["mutual".to_owned()])
+        );
+        assert_friend_status(mutual_receiver.recv().await, "source", true);
+
+        presence::disconnected(&clients, "source", Uuid::new_v4()).await;
+        assert!(clients.lock().await.contains_key("source"));
+        assert!(mutual_receiver.try_recv().is_err());
+
+        presence::disconnected(&clients, "source", connection_id).await;
+        assert_friend_status(mutual_receiver.recv().await, "source", false);
+        assert!(one_way_receiver.try_recv().is_err());
+        assert!(!clients.lock().await.contains_key("source"));
     }
 
     #[tokio::test]
@@ -668,5 +769,18 @@ mod tests {
             .await
         );
         assert!(mutual_receiver.try_recv().is_err());
+    }
+
+    fn assert_friend_status(message: Option<Message>, expected_id: &str, expected_online: bool) {
+        let Message::Text(message) = message.expect("friend receives status") else {
+            panic!("expected text status");
+        };
+        let ServerMessage::FriendStatusChanged { friend_id, online } =
+            serde_json::from_str(&message).expect("decode friend status")
+        else {
+            panic!("expected friend status");
+        };
+        assert_eq!(friend_id, expected_id);
+        assert_eq!(online, expected_online);
     }
 }

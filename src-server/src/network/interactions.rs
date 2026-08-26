@@ -10,7 +10,7 @@ use wyd_common::{
     MAX_INTERACTION_PAYLOAD_BYTES, ServerMessage, interaction_bytes,
 };
 
-use super::{Clients, verify};
+use super::{Clients, are_mutual_friends, verify};
 
 pub(super) async fn relay(
     clients: &Clients,
@@ -28,10 +28,7 @@ pub(super) async fn relay(
             .filter(|client| client.connection_id == connection_id)?;
         let recipient = clients
             .get(recipient_id)
-            .filter(|recipient| {
-                source.friends.iter().any(|friend| friend == recipient_id)
-                    && recipient.friends.iter().any(|friend| friend == public_key)
-            })
+            .filter(|recipient| are_mutual_friends(public_key, source, recipient_id, recipient))
             .map(|recipient| recipient.sender.clone());
         (source.key, recipient)
     };

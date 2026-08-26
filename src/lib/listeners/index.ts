@@ -1,4 +1,5 @@
 import { initConnectionStatusesListener } from "./connection-status";
+import { initFriendStatusesListener } from "./friend-statuses";
 import { initFriendsListener } from "./friends";
 import { initInteractionListener } from "./interactions";
 import { initLiveMetadataListeners } from "./live-metadata";
@@ -16,6 +17,7 @@ export function initAppListeners(): Unlisten {
     initRemotesListener(),
     initProfileListener(),
     initConnectionStatusesListener(),
+    initFriendStatusesListener(),
     initLiveMetadataListeners(),
     initInteractionListener(),
   ])

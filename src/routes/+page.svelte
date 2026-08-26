@@ -1,5 +1,6 @@
 <script>
   import FriendsList from "$lib/components/friends-list.svelte";
+  import FriendStatuses from "$lib/components/friend-statuses.svelte";
   import ConnectionStatus from "$lib/components/connection-status.svelte";
   import Profile from "$lib/components/profile.svelte";
   import RemotesList from "$lib/components/remotes-list.svelte";
@@ -12,6 +13,9 @@
   </div>
   <div>
     <FriendsList />
+  </div>
+  <div>
+    <FriendStatuses />
   </div>
   <div>
     <RemotesList />

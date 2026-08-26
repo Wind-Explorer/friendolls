@@ -19,6 +19,17 @@ export const liveMetadata = writable<LiveMetadata>({
 });
 export const liveMetadataListenerError = writable("");
 
+export function removeFriendForegroundApps(friendIds: string[]) {
+  if (friendIds.length === 0) return;
+  const removed = new Set(friendIds);
+  liveMetadata.update((metadata) => ({
+    ...metadata,
+    foregroundApps: new Map(
+      [...metadata.foregroundApps].filter(([userId]) => !removed.has(userId)),
+    ),
+  }));
+}
+
 export async function initLiveMetadataListeners() {
   let localId = "";
   let pendingLocalForegroundApp: AppMeta | null = null;

@@ -31,6 +31,7 @@ pub enum ClientMessage {
         signature: String,
     },
     SyncFriendProfiles,
+    SyncFriendStatuses,
     Signed {
         payload: String,
         signature: String,
@@ -105,6 +106,13 @@ pub enum ServerMessage {
     },
     FriendProfiles {
         profiles: Vec<Profile>,
+    },
+    FriendStatusChanged {
+        friend_id: String,
+        online: bool,
+    },
+    FriendStatuses {
+        friend_ids: Vec<String>,
     },
     FriendLiveData {
         friend_id: String,

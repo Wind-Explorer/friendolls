@@ -46,6 +46,16 @@ impl CursorState {
         positions_by_user.insert(user_id, positions);
         Ok(positions_by_user.clone())
     }
+
+    fn remove(
+        &self,
+        user_ids: &[String],
+    ) -> Result<Option<HashMap<String, CursorPositions>>, String> {
+        let mut positions_by_user = self.0.write().map_err(|error| error.to_string())?;
+        let previous_len = positions_by_user.len();
+        positions_by_user.retain(|user_id, _| !user_ids.contains(user_id));
+        Ok((positions_by_user.len() != previous_len).then(|| positions_by_user.clone()))
+    }
 }
 
 // Was private, but for some reason LSP
@@ -125,6 +135,23 @@ pub(crate) fn emit_position(handle: &AppHandle, user_id: String, positions: Curs
     }
 }
 
+pub(crate) fn remove_positions(handle: &AppHandle, user_ids: &[String]) {
+    if user_ids.is_empty() {
+        return;
+    }
+    let positions = match handle.state::<CursorState>().remove(user_ids) {
+        Ok(Some(positions)) => positions,
+        Ok(None) => return,
+        Err(error) => {
+            eprintln!("Failed to remove offline cursor positions: {error}");
+            return;
+        }
+    };
+    if let Err(error) = (CursorPositionChanged { positions }).emit(handle) {
+        eprintln!("Failed to emit cursor position removal: {error}");
+    }
+}
+
 /// Convert absolute to normalized coordinates (0.12, 0.78), or normalized to absolute (1234, 567)
 pub fn transform_cursor_pos(
     pos: &CursorPosition,
@@ -181,6 +208,13 @@ mod tests {
         let snapshot = state.update("local".to_owned(), positions(3.0)).unwrap();
         assert_eq!(snapshot.len(), 2);
         assert_eq!(snapshot["local"].raw.x, 3.0);
+
+        let snapshot = state
+            .remove(&["friend".to_owned()])
+            .unwrap()
+            .expect("friend cursor removed");
+        assert_eq!(snapshot.keys().collect::<Vec<_>>(), ["local"]);
+        assert!(state.remove(&["missing".to_owned()]).unwrap().is_none());
     }
 
     #[test]
