@@ -77,19 +77,19 @@
 <main
   class="flex h-full min-h-0 flex-col overflow-hidden bg-base-100 p-2 text-base-content"
 >
-  <div class="tabs tabs-lift min-h-0 flex-1">
+  <div class="tabs tabs-lift tabs-sm min-h-0 flex-1">
     {#each tabs as tab}
       <input
         id={`${tab.id}-tab`}
         type="radio"
         name="control_panel_tabs"
-        class="tab"
+        class="tab text-xs"
         aria-label={`${tab.label}${panelStates[tab.id].dirty ? " *" : ""}`}
         value={tab.id}
         bind:group={activeTab}
       />
       <div
-        class="tab-content h-[calc(100%-1.75rem)] w-full overflow-hidden border border-base-300 bg-base-100 p-3"
+        class="tab-content h-[calc(100%-1.3rem)] w-full overflow-hidden border border-base-300 bg-base-100 p-3"
         role="tabpanel"
         aria-labelledby={`${tab.id}-tab`}
       >

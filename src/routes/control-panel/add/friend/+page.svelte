@@ -44,13 +44,6 @@
   onsubmit={submit}
 >
   <div class="min-h-0 flex-1 space-y-2">
-    <div>
-      <h1 class="text-sm font-bold">Add a friend</h1>
-      <p class="text-xs text-base-content/65">
-        Enter the identity your friend shared with you.
-      </p>
-    </div>
-
     {#if error}<PanelMessage kind="error">{error}</PanelMessage>{/if}
 
     <fieldset class="fieldset border border-base-300 bg-base-100 p-3">
