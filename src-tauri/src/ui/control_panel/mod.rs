@@ -45,7 +45,7 @@ pub fn show(handle: &AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn open_action_window(
+pub async fn open_action_window(
     handle: AppHandle,
     name: String,
     title: String,
