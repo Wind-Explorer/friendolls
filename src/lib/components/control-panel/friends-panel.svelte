@@ -4,10 +4,15 @@
     friendStatusesListenerError,
     onlineFriendIds,
   } from "$lib/listeners/friend-statuses";
-  import { friends, friendsListenerError } from "$lib/listeners/friends";
+  import {
+    friendName,
+    friends,
+    friendsListenerError,
+  } from "$lib/listeners/friends";
   import { onMount } from "svelte";
   import PanelMessage from "./panel-message.svelte";
   import type { RegisterPanel } from "./types";
+  import Info from "$lib/icons/info.svelte";
 
   let { register }: { register: RegisterPanel } = $props();
 
@@ -85,8 +90,9 @@
 
   {#if mode === "remove" && selected}
     <PanelMessage kind="warning">
-      Applying will remove <strong>{selected.displayName}</strong>. They will
-      immediately go offline and stop receiving your activity.
+      Applying will remove <strong
+        >{friendName(selected, "Unknown friend")}</strong
+      >. They will immediately go offline and stop receiving your activity.
     </PanelMessage>
     <button class="btn w-fit" type="button" onclick={() => (mode = "browse")}
       >Keep friend</button
@@ -126,7 +132,23 @@
               ondblclick={() => (selectedId = friend.id)}
             >
               <span class="min-w-0">
-                <strong class="block truncate">{friend.displayName}</strong>
+                <div class="flex flex-row gap-1.5">
+                  <strong
+                    class:italic={!friend.displayName}
+                    class="block truncate"
+                    >{friendName(friend, "Unknown friend")}</strong
+                  >
+                  {#if !friend.displayName}
+                    <div
+                      class="tooltip tooltip-primary"
+                      data-tip={"Will be resolved when they're online"}
+                    >
+                      <div class="*:size-3 opacity-50">
+                        <Info />
+                      </div>
+                    </div>
+                  {/if}
+                </div>
                 <span class="block truncate font-mono text-[9px] opacity-65"
                   >{friend.id}</span
                 >

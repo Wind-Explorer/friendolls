@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import Popover from "$lib/components/popover.svelte";
-  import { friends } from "$lib/listeners/friends";
+  import { friendName, friends } from "$lib/listeners/friends";
   import { onlineFriendIds } from "$lib/listeners/friend-statuses";
   import { incomingInteraction } from "$lib/listeners/interactions";
   import { liveMetadata } from "$lib/listeners/live-metadata";
@@ -44,8 +44,10 @@
   function displayName(userId: string) {
     return $profile?.id === userId
       ? $profile.displayName
-      : ($friends.find((friend) => friend.id === userId)?.displayName ??
-          "Unknown user");
+      : friendName(
+          $friends.find((friend) => friend.id === userId),
+          "Unknown user",
+        );
   }
 
   function dismissInteraction(interactionId: string) {

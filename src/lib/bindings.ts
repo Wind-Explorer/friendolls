@@ -5,13 +5,13 @@
 
 
 export const commands = {
-async createFriend(friend: User) : Promise<User> {
-    return await TAURI_INVOKE("create_friend", { friend });
+async createFriend(id: string) : Promise<Friend> {
+    return await TAURI_INVOKE("create_friend", { id });
 },
-async listFriends() : Promise<User[]> {
+async listFriends() : Promise<Friend[]> {
     return await TAURI_INVOKE("list_friends");
 },
-async getFriend(id: string) : Promise<User | null> {
+async getFriend(id: string) : Promise<Friend | null> {
     return await TAURI_INVOKE("get_friend", { id });
 },
 async deleteFriend(id: string) : Promise<boolean> {
@@ -46,6 +46,9 @@ async listStatuses() : Promise<ConnectionStatus[]> {
 },
 async listFriendStatuses() : Promise<string[]> {
     return await TAURI_INVOKE("list_friend_statuses");
+},
+async resolveFriendDisplayName(userId: string) : Promise<string | null> {
+    return await TAURI_INVOKE("resolve_friend_display_name", { userId });
 },
 async pickAndSendImage(recipientId: string) : Promise<boolean> {
     return await TAURI_INVOKE("pick_and_send_image", { recipientId });
@@ -113,10 +116,15 @@ raw: CursorPosition;
  */
 mapped: CursorPosition }
 export type ForegroundAppChanged = { meta: AppMeta }
+/**
+ * A configured public-key relationship with optional cached remote metadata.
+ * The display name remains absent until learned from a signed remote profile.
+ */
+export type Friend = { id: string; displayName: string | null }
 export type FriendForegroundAppChanged = { friendId: string; meta: AppMeta }
 export type FriendInteractionReceived = { interactionId: string; friendId: string; content: InteractionContent }
 export type FriendStatusesChanged = { friendIds: string[] }
-export type FriendsChanged = { friends: User[] }
+export type FriendsChanged = { friends: Friend[] }
 export type InteractionContent = { type: "text"; text: string } | { type: "wave" } | { type: "image"; mediaType: string; data: string }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
 export type ProfileChanged = { profile: User }

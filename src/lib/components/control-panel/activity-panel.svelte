@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { friends } from "$lib/listeners/friends";
+  import { friendName, friends } from "$lib/listeners/friends";
   import {
     liveMetadata,
     liveMetadataListenerError,
@@ -25,9 +25,9 @@
 
   function nameFor(id: string) {
     if (id === $liveMetadata.localId) return "You";
-    return (
-      $friends.find((friend) => friend.id === id)?.displayName ??
-      "Unknown friend"
+    return friendName(
+      $friends.find((friend) => friend.id === id),
+      "Unknown friend",
     );
   }
 

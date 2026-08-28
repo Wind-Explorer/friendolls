@@ -62,6 +62,7 @@ struct Connection {
     remote: Remote,
     sender: mpsc::Sender<String>,
     interaction_sender: mpsc::Sender<InteractionRequest>,
+    profile_lookup_sender: mpsc::Sender<ProfileLookupRequest>,
     task: tauri::async_runtime::JoinHandle<()>,
     generation: u64,
 }
@@ -71,6 +72,21 @@ struct InteractionRequest {
     recipient_id: String,
     payload: String,
     response: oneshot::Sender<InteractionDeliveryStatus>,
+}
+
+struct ProfileLookupRequest {
+    request_id: String,
+    user_id: String,
+    response: oneshot::Sender<Option<String>>,
+}
+
+struct ConnectionInputs {
+    profiles: watch::Receiver<crate::user::User>,
+    friends: watch::Receiver<Vec<String>>,
+    keypair: AppKeypair,
+    live_data: mpsc::Receiver<String>,
+    interactions: mpsc::Receiver<InteractionRequest>,
+    profile_lookups: mpsc::Receiver<ProfileLookupRequest>,
 }
 
 pub struct Network {
@@ -167,6 +183,45 @@ impl Network {
         Err("Friend is no longer available".to_owned())
     }
 
+    pub async fn resolve_profile(&self, user_id: String) -> Result<Option<String>, String> {
+        crate::user::validate_id(&user_id)?;
+        if user_id == self.keypair.public_key() {
+            return Err("You cannot add your own identification key.".to_owned());
+        }
+
+        let senders: Vec<_> = self
+            .connections
+            .lock()
+            .map_err(|error| error.to_string())?
+            .values()
+            .map(|connection| connection.profile_lookup_sender.clone())
+            .collect();
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let mut responses = Vec::new();
+        for sender in senders {
+            let (response, receiver) = oneshot::channel();
+            let request = ProfileLookupRequest {
+                request_id: request_id.clone(),
+                user_id: user_id.clone(),
+                response,
+            };
+            if sender.try_send(request).is_ok() {
+                responses.push(receiver);
+            }
+        }
+
+        let mut pending: FuturesUnordered<_> = responses
+            .into_iter()
+            .map(|response| tokio::time::timeout(Duration::from_secs(3), response))
+            .collect();
+        while let Some(result) = pending.next().await {
+            if let Ok(Ok(Some(display_name))) = result {
+                return Ok(Some(display_name));
+            }
+        }
+        Ok(None)
+    }
+
     fn sync_remotes(&self, handle: &AppHandle, remotes: Vec<Remote>) -> Result<(), String> {
         let desired: HashMap<_, _> = remotes
             .into_iter()
@@ -196,6 +251,7 @@ impl Network {
             let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
             let (sender, receiver) = mpsc::channel(32);
             let (interaction_sender, interaction_receiver) = mpsc::channel(16);
+            let (profile_lookup_sender, profile_lookup_receiver) = mpsc::channel(16);
             set_initial(
                 &self.statuses,
                 &remote,
@@ -208,11 +264,14 @@ impl Network {
                 self.friend_presence.clone(),
                 remote.clone(),
                 generation,
-                self.profile.subscribe(),
-                self.friends.subscribe(),
-                self.keypair.clone(),
-                receiver,
-                interaction_receiver,
+                ConnectionInputs {
+                    profiles: self.profile.subscribe(),
+                    friends: self.friends.subscribe(),
+                    keypair: self.keypair.clone(),
+                    live_data: receiver,
+                    interactions: interaction_receiver,
+                    profile_lookups: profile_lookup_receiver,
+                },
             ));
             connections.insert(
                 remote.id.clone(),
@@ -220,6 +279,7 @@ impl Network {
                     remote,
                     sender,
                     interaction_sender,
+                    profile_lookup_sender,
                     task,
                     generation,
                 },
@@ -280,11 +340,7 @@ async fn run(
     friend_presence: Arc<FriendPresence>,
     remote: Remote,
     generation: u64,
-    mut profiles: watch::Receiver<crate::user::User>,
-    mut friends: watch::Receiver<Vec<String>>,
-    keypair: AppKeypair,
-    mut outgoing: mpsc::Receiver<String>,
-    mut active_outgoing: mpsc::Receiver<InteractionRequest>,
+    mut inputs: ConnectionInputs,
 ) {
     loop {
         changed(
@@ -300,11 +356,7 @@ async fn run(
             &friend_presence,
             &remote,
             generation,
-            &mut profiles,
-            &mut friends,
-            &keypair,
-            &mut outgoing,
-            &mut active_outgoing,
+            &mut inputs,
         )
         .await
         {
@@ -328,12 +380,16 @@ async fn connect(
     friend_presence: &FriendPresence,
     remote: &Remote,
     generation: u64,
-    profiles: &mut watch::Receiver<crate::user::User>,
-    friends: &mut watch::Receiver<Vec<String>>,
-    keypair: &AppKeypair,
-    outgoing: &mut mpsc::Receiver<String>,
-    active_outgoing: &mut mpsc::Receiver<InteractionRequest>,
+    inputs: &mut ConnectionInputs,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let ConnectionInputs {
+        profiles,
+        friends,
+        keypair,
+        live_data,
+        interactions: active_outgoing,
+        profile_lookups,
+    } = inputs;
     let (socket, _) = tokio_tungstenite::connect_async(url(remote)).await?;
     let (mut writer, mut reader) = socket.split();
 
@@ -366,7 +422,7 @@ async fn connect(
     if !matches!(recv(&mut reader).await?, ServerMessage::Registered) {
         return Err("server rejected registration".into());
     }
-    while outgoing.try_recv().is_ok() {}
+    while live_data.try_recv().is_ok() {}
     while let Ok(request) = active_outgoing.try_recv() {
         let _ = request
             .response
@@ -383,9 +439,11 @@ async fn connect(
     );
 
     let mut pending_interactions = HashMap::new();
+    let mut pending_profile_lookups: HashMap<String, (String, oneshot::Sender<Option<String>>)> =
+        HashMap::new();
     loop {
         tokio::select! {
-            payload = outgoing.recv() => {
+            payload = live_data.recv() => {
                 let payload = payload.ok_or("network sender closed")?;
                 send(&mut writer, &ClientMessage::Signed {
                     signature: keypair.sign(&message_bytes(&payload)),
@@ -406,6 +464,21 @@ async fn connect(
                     signature,
                 }).await?;
                 pending_interactions.insert(request.interaction_id, request.response);
+            }
+            request = profile_lookups.recv() => {
+                let request = request.ok_or("profile lookup sender closed")?;
+                if request.response.is_closed() {
+                    continue;
+                }
+                pending_profile_lookups.retain(|_, (_, response)| !response.is_closed());
+                send(&mut writer, &ClientMessage::ResolveProfile {
+                    request_id: request.request_id.clone(),
+                    user_id: request.user_id.clone(),
+                }).await?;
+                pending_profile_lookups.insert(
+                    request.request_id,
+                    (request.user_id, request.response),
+                );
             }
             changed = profiles.changed() => {
                 changed.map_err(|_| "profile sender closed")?;
@@ -481,6 +554,14 @@ async fn connect(
                             let _ = response.send(status);
                         }
                     }
+                    ServerMessage::ProfileResolved { request_id, profile } => {
+                        if let Some((user_id, response)) = pending_profile_lookups.remove(&request_id) {
+                            let display_name = profile
+                                .filter(|profile| profile.id == user_id)
+                                .map(|profile| profile.display_name);
+                            let _ = response.send(display_name);
+                        }
+                    }
                     _ => {}
                 },
                 Message::Ping(data) => writer.send(Message::Pong(data)).await?,
@@ -510,6 +591,15 @@ pub fn list_statuses(
 #[specta::specta]
 pub fn list_friend_statuses(network: State<'_, Network>) -> Result<Vec<String>, String> {
     network.friend_presence.snapshot()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn resolve_friend_display_name(
+    user_id: String,
+    network: State<'_, Network>,
+) -> Result<Option<String>, String> {
+    network.resolve_profile(user_id.trim().to_owned()).await
 }
 
 fn update_friend_presence(
@@ -658,7 +748,7 @@ fn url(remote: &Remote) -> String {
     format!("{scheme}://{address}{port}/v1/ws")
 }
 
-fn friend_ids(friends: Vec<crate::user::User>, own_id: &str) -> Vec<String> {
+fn friend_ids(friends: Vec<crate::friends::Friend>, own_id: &str) -> Vec<String> {
     let mut ids: Vec<_> = friends
         .into_iter()
         .map(|friend| friend.id)
@@ -672,22 +762,22 @@ fn friend_ids(friends: Vec<crate::user::User>, own_id: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::friend_ids;
-    use crate::user::User;
+    use crate::friends::Friend;
 
     #[test]
     fn friend_ids_discards_display_names_and_normalizes_ids() {
         let friends = vec![
-            User {
+            Friend {
                 id: "friend-b".to_owned(),
-                display_name: "Old name".to_owned(),
+                display_name: Some("Old name".to_owned()),
             },
-            User {
+            Friend {
                 id: "self".to_owned(),
-                display_name: "Me".to_owned(),
+                display_name: None,
             },
-            User {
+            Friend {
                 id: "friend-a".to_owned(),
-                display_name: "Any name".to_owned(),
+                display_name: Some("Any name".to_owned()),
             },
         ];
 

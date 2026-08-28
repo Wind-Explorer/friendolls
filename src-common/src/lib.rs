@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-pub const VERSION: u8 = 1;
+pub const VERSION: u8 = 2;
 pub const MAX_INTERACTION_PAYLOAD_BYTES: usize = 160 * 1024;
 pub const MAX_IMAGE_B64_SIZE: usize = 150 * 1024;
 pub const MAX_IMAGE_DIMENSION: u32 = 480;
@@ -32,6 +32,10 @@ pub enum ClientMessage {
     },
     SyncFriendProfiles,
     SyncFriendStatuses,
+    ResolveProfile {
+        request_id: String,
+        user_id: String,
+    },
     Signed {
         payload: String,
         signature: String,
@@ -106,6 +110,10 @@ pub enum ServerMessage {
     },
     FriendProfiles {
         profiles: Vec<Profile>,
+    },
+    ProfileResolved {
+        request_id: String,
+        profile: Option<Profile>,
     },
     FriendStatusChanged {
         friend_id: String,

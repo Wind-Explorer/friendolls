@@ -1,6 +1,10 @@
 <script lang="ts">
   import { commands } from "$lib/bindings";
-  import { friends, friendsListenerError } from "$lib/listeners/friends";
+  import {
+    friendName,
+    friends,
+    friendsListenerError,
+  } from "$lib/listeners/friends";
 
   let error = "";
 
@@ -11,10 +15,7 @@
     error = "";
 
     try {
-      await commands.createFriend({
-        id: String(data.get("id") ?? ""),
-        displayName: String(data.get("displayName") ?? ""),
-      });
+      await commands.createFriend(String(data.get("id") ?? ""));
       form.reset();
     } catch (err) {
       error = String(err);
@@ -43,13 +44,6 @@
       </label>
     </p>
 
-    <p>
-      <label>
-        Display name
-        <input name="displayName" required />
-      </label>
-    </p>
-
     <button type="submit">Create friend</button>
   </form>
 
@@ -63,7 +57,7 @@
     <ul>
       {#each $friends as friend (friend.id)}
         <li>
-          <span>{friend.displayName} ({friend.id})</span>
+          <span>{friendName(friend, "Unknown friend")} ({friend.id})</span>
           <button type="button" onclick={() => deleteFriend(friend.id)}>Delete</button>
         </li>
       {/each}

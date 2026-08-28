@@ -72,6 +72,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             keypair::get_public_key,
             network::list_statuses,
             network::list_friend_statuses,
+            network::resolve_friend_display_name,
             images::pick_and_send_image,
             images::send_image_bytes,
             interactions::send_interaction,

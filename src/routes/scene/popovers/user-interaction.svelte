@@ -4,7 +4,7 @@
     type AppMeta,
     type InteractionContent,
   } from "$lib/bindings";
-  import { friends } from "$lib/listeners/friends";
+  import { friendName, friends } from "$lib/listeners/friends";
   import { profile } from "$lib/listeners/profile";
 
   type Props = {
@@ -33,8 +33,10 @@
   let username = $derived(
     $profile?.id === userId
       ? $profile.displayName
-      : ($friends.find((friend) => friend.id === userId)?.displayName ??
-          "Unknown user"),
+      : friendName(
+          $friends.find((friend) => friend.id === userId),
+          "Unknown user",
+        ),
   );
 
   function selectMode(nextMode: "message" | "image") {

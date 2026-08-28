@@ -1,19 +1,30 @@
 use crate::db::{self, AppDatabase};
-use crate::user::User;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
 
+use crate::keypair::AppKeypair;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+/// A configured public-key relationship with optional cached remote metadata.
+/// The display name remains absent until learned from a signed remote profile.
+pub struct Friend {
+    pub id: String,
+    pub display_name: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
 #[serde(rename_all = "camelCase")]
 pub struct FriendsChanged {
-    pub friends: Vec<User>,
+    pub friends: Vec<Friend>,
 }
 
-pub(crate) async fn all(database: &AppDatabase) -> Result<Vec<User>, sqlx::Error> {
-    sqlx::query_as::<_, User>(
-        "SELECT id, display_name FROM friends ORDER BY display_name COLLATE NOCASE, id",
+pub(crate) async fn all(database: &AppDatabase) -> Result<Vec<Friend>, sqlx::Error> {
+    sqlx::query_as::<_, Friend>(
+        "SELECT id, display_name FROM friends \
+         ORDER BY display_name IS NULL, display_name COLLATE NOCASE, id",
     )
     .fetch_all(database.pool())
     .await
@@ -35,7 +46,7 @@ async fn update_display_names(
     let mut changed = false;
     for profile in profiles {
         let result = sqlx::query(
-            "UPDATE friends SET display_name = ?1 WHERE id = ?2 AND display_name != ?1",
+            "UPDATE friends SET display_name = ?1 WHERE id = ?2 AND display_name IS NOT ?1",
         )
         .bind(&profile.display_name)
         .bind(&profile.id)
@@ -74,11 +85,21 @@ pub(crate) async fn apply_profile_sync(
 pub async fn create_friend(
     handle: AppHandle,
     database: State<'_, AppDatabase>,
-    friend: User,
-) -> Result<User, String> {
-    sqlx::query("INSERT INTO friends (id, display_name) VALUES (?1, ?2)")
+    keypair: State<'_, AppKeypair>,
+    id: String,
+) -> Result<Friend, String> {
+    let id = id.trim().to_owned();
+    crate::user::validate_id(&id)?;
+    if id == keypair.public_key() {
+        return Err("You cannot add your own identification key.".to_owned());
+    }
+
+    let friend = Friend {
+        id,
+        display_name: None,
+    };
+    sqlx::query("INSERT INTO friends (id, display_name) VALUES (?1, NULL)")
         .bind(&friend.id)
-        .bind(&friend.display_name)
         .execute(database.pool())
         .await
         .map_err(db::command_error)?;
@@ -93,7 +114,7 @@ pub async fn create_friend(
 pub async fn list_friends(
     handle: AppHandle,
     database: State<'_, AppDatabase>,
-) -> Result<Vec<User>, String> {
+) -> Result<Vec<Friend>, String> {
     let friends = all(&database).await.map_err(db::command_error)?;
 
     FriendsChanged {
@@ -110,8 +131,8 @@ pub async fn list_friends(
 pub async fn get_friend(
     database: State<'_, AppDatabase>,
     id: String,
-) -> Result<Option<User>, String> {
-    sqlx::query_as::<_, User>("SELECT id, display_name FROM friends WHERE id = ?1")
+) -> Result<Option<Friend>, String> {
+    sqlx::query_as::<_, Friend>("SELECT id, display_name FROM friends WHERE id = ?1")
         .bind(id)
         .fetch_optional(database.pool())
         .await
@@ -199,9 +220,9 @@ mod tests {
         );
         assert_eq!(
             all(&database).await.unwrap(),
-            [User {
+            [Friend {
                 id: "friend-id".to_owned(),
-                display_name: "New".to_owned(),
+                display_name: Some("New".to_owned()),
             }]
         );
     }

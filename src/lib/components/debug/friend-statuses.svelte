@@ -3,7 +3,11 @@
     friendStatusesListenerError,
     onlineFriendIds,
   } from "$lib/listeners/friend-statuses";
-  import { friends, friendsListenerError } from "$lib/listeners/friends";
+  import {
+    friendName,
+    friends,
+    friendsListenerError,
+  } from "$lib/listeners/friends";
 </script>
 
 <section>
@@ -20,7 +24,7 @@
       {#each $friends as friend (friend.id)}
         {@const online = $onlineFriendIds.has(friend.id)}
         <li>
-          <strong>{friend.displayName}</strong>: {online ? "Online" : "Offline"}
+          <strong>{friendName(friend, "Unknown friend")}</strong>: {online ? "Online" : "Offline"}
           <small>({friend.id})</small>
         </li>
       {/each}

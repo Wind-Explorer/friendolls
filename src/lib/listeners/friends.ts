@@ -1,7 +1,13 @@
 import { writable } from "svelte/store";
-import { commands, events, type User } from "$lib/bindings";
+import { commands, events, type Friend } from "$lib/bindings";
 
-export const friends = writable<User[]>([]);
+export const UNRESOLVED_FRIEND_NAME = "Name pending resolution";
+
+export function friendName(friend: Friend | undefined, fallback: string) {
+  return friend?.displayName ?? (friend ? UNRESOLVED_FRIEND_NAME : fallback);
+}
+
+export const friends = writable<Friend[]>([]);
 export const friendsListenerError = writable("");
 
 export async function initFriendsListener() {
