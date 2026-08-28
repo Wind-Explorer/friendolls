@@ -6,15 +6,27 @@
   import { incomingInteraction } from "$lib/listeners/interactions";
   import { liveMetadata } from "$lib/listeners/live-metadata";
   import { profile } from "$lib/listeners/profile";
+  import { puppetStates } from "$lib/listeners/puppets";
+  import Renderer from "./components/renderer.svelte";
+  import type { PuppetScreenBounds } from "./components/renderer/types";
+  import { startHitboxSync } from "./hitboxes";
   import SceneImageViewer from "./popovers/image-viewer.svelte";
   import SceneInteractionBubble from "./popovers/interaction-bubble.svelte";
   import SceneUserPopoverContent from "./popovers/user-interaction.svelte";
-  import { startHitboxSync } from "./hitboxes";
 
   let selectedUserId = $state<string | null>(null);
-  let selectedUserX = $state<number | null>(null);
   let lockedPopoverUserId = $state<string | null>(null);
   let viewedImage = $state<{ source: string; senderName: string } | null>(null);
+  let puppetBounds = $state<PuppetScreenBounds[]>([]);
+  let puppetBoundsById = $derived(
+    new Map(puppetBounds.map((bounds) => [bounds.id, bounds])),
+  );
+  let visiblePuppets = $derived(
+    $puppetStates.filter(
+      ({ id }) =>
+        id === $liveMetadata.localId || $onlineFriendIds.has(id),
+    ),
+  );
 
   onMount(startHitboxSync);
 
@@ -32,12 +44,9 @@
   $effect(() => {
     if (
       selectedUserId &&
-      selectedUserId !== $liveMetadata.localId &&
-      !$onlineFriendIds.has(selectedUserId)
+      !visiblePuppets.some((puppet) => puppet.id === selectedUserId)
     ) {
-      selectedUserId = null;
-      selectedUserX = null;
-      lockedPopoverUserId = null;
+      dismissPopover();
     }
   });
 
@@ -56,36 +65,52 @@
     );
   }
 
-  function setPopoverOpen(
-    userId: string,
-    cursorX: number,
-    open: boolean,
-    trigger: HTMLButtonElement,
-  ) {
+  function setPopoverOpen(userId: string, open: boolean) {
     if (open && lockedPopoverUserId && lockedPopoverUserId !== userId) return;
-    selectedUserId = open ? userId : null;
-    if (!open && lockedPopoverUserId === userId) lockedPopoverUserId = null;
-    selectedUserX = open
-      ? window.innerWidth > 0
-        ? trigger.getBoundingClientRect().left / window.innerWidth
-        : cursorX
-      : null;
+    if (open) {
+      selectedUserId = userId;
+    } else {
+      dismissPopover();
+    }
+  }
+
+  function dismissPopover() {
+    selectedUserId = null;
+    lockedPopoverUserId = null;
+  }
+
+  function popoverPosition(bounds: PuppetScreenBounds) {
+    const centerX = bounds.x + bounds.width / 2;
+    const horizontal = `position: fixed; left: clamp(0.5rem, calc(${centerX}px - 8.5rem), calc(100vw - 17.5rem));`;
+
+    return bounds.y > window.innerHeight / 2
+      ? `${horizontal} bottom: calc(100vh - ${bounds.y}px + 0.75rem);`
+      : `${horizontal} top: ${bounds.y + bounds.height + 12}px;`;
   }
 </script>
 
-<div class="flex size-full flex-col justify-end">
-  <div role="banner" class="relative my-2 h-8 w-full">
-    {#each Object.entries($liveMetadata.cursorPositions) as [userId, cursor], index (userId)}
+<div class="relative size-full">
+  <Renderer
+    puppets={visiblePuppets}
+    frozenPuppetId={selectedUserId}
+    onBoundsChange={(bounds) => (puppetBounds = bounds)}
+  />
+
+  <div role="banner" class="pointer-events-none fixed inset-0 z-10">
+    {#each visiblePuppets as puppet, index (puppet.id)}
+      {@const userId = puppet.id}
+      {@const bounds = puppetBoundsById.get(userId)}
       {@const foregroundApp = $liveMetadata.foregroundApps.get(userId)}
       {@const popoverId = `scene-user-${index}`}
       {@const interaction =
         $incomingInteraction?.friendId === userId ? $incomingInteraction : null}
-      {#if cursor && (userId === $liveMetadata.localId || $onlineFriendIds.has(userId))}
-        {@const renderedX =
-          selectedUserId === userId ? selectedUserX : cursor.mapped.x}
+      {#if bounds}
         <div
-          class="absolute bottom-0 left-0 flex flex-col items-center gap-1 transition-transform duration-1000 ease-linear"
-          style:transform={`translateX(${(renderedX ?? cursor.mapped.x) * 100}vw)`}
+          class="pointer-events-none fixed"
+          style:left={`${bounds.x}px`}
+          style:top={`${bounds.y}px`}
+          style:width={`${bounds.width}px`}
+          style:height={`${bounds.height}px`}
         >
           {#if interaction}
             <SceneInteractionBubble
@@ -103,7 +128,7 @@
             <img
               src={`data:image/png;base64,${foregroundApp.ico}`}
               alt=""
-              class="size-4 object-contain"
+              class="pointer-events-none absolute -top-5 left-1/2 size-4 -translate-x-1/2 object-contain"
             />
           {/if}
 
@@ -112,21 +137,17 @@
             label="Show live user information"
             labelledBy={`${popoverId}-title`}
             open={selectedUserId === userId}
-            onOpenChange={(open, trigger) =>
-              setPopoverOpen(userId, cursor.mapped.x, open, trigger)}
-            triggerClass="scene-hitbox"
-            panelClass="scene-hitbox bottom-[calc(100%+0.75rem)] w-68"
-            panelStyle={`left: clamp(calc(0.5rem - ${(renderedX ?? cursor.mapped.x) * 100}vw), -8rem, calc(100vw - ${(renderedX ?? cursor.mapped.x) * 100}vw - 17.5rem))`}
+            onOpenChange={(open) => setPopoverOpen(userId, open)}
+            class="size-full"
+            triggerClass="scene-hitbox size-full min-h-0"
+            panelClass="scene-hitbox fixed w-68"
+            panelStyle={popoverPosition(bounds)}
             closeOnOutsidePointer={lockedPopoverUserId !== userId}
             closeOnWindowBlur={lockedPopoverUserId !== userId}
             closeOnFocusOut={lockedPopoverUserId !== userId}
           >
             {#snippet trigger()}
-              <img
-                src="/fa.png"
-                alt=""
-                class="size-6 sepia saturate-200 hue-rotate-[100deg]"
-              />
+              <span class="block size-full"></span>
             {/snippet}
 
             <SceneUserPopoverContent
@@ -136,16 +157,8 @@
               {foregroundApp}
               onModeChange={(active) =>
                 (lockedPopoverUserId = active ? userId : null)}
-              onDismiss={() => {
-                selectedUserId = null;
-                selectedUserX = null;
-                lockedPopoverUserId = null;
-              }}
-              onSent={() => {
-                selectedUserId = null;
-                selectedUserX = null;
-                lockedPopoverUserId = null;
-              }}
+              onDismiss={dismissPopover}
+              onSent={dismissPopover}
             />
           </Popover>
         </div>

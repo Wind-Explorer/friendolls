@@ -7,6 +7,7 @@ mod keypair;
 mod live_data;
 mod network;
 mod profile;
+mod puppet;
 mod remotes;
 mod ufa;
 mod ui;
@@ -22,8 +23,10 @@ async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     network::init(handle).await?;
     app.manage(ufa::ForegroundAppState::default());
     app.manage(cursor::CursorState::default());
+    app.manage(puppet::PuppetStateStore::default());
     ufa::init(handle);
     cursor::init(handle);
+    puppet::init(handle)?;
     ui::init(handle);
     Ok(())
 }
@@ -76,6 +79,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             images::pick_and_send_image,
             images::send_image_bytes,
             interactions::send_interaction,
+            puppet::list_puppet_states,
             ui::control_panel::open_action_window,
             ui::scene::update_scene_hitboxes,
         ])
@@ -89,6 +93,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             ufa::ForegroundAppChanged,
             ufa::FriendForegroundAppChanged,
             interactions::FriendInteractionReceived,
+            puppet::PuppetStatesChanged,
         ])
 }
 

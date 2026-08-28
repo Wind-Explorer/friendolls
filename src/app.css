@@ -77,6 +77,10 @@
   background-color: transparent;
 }
 
+.scene-hitbox {
+  pointer-events: auto;
+}
+
 button,
 input {
   @apply btn-sm;

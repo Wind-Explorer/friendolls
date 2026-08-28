@@ -11,14 +11,14 @@ use tauri_specta::Event;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorPosition {
     pub x: f64,
     pub y: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CursorPositions {
     /// Absolute cursor coordinates in physical pixels.
@@ -55,6 +55,13 @@ impl CursorState {
         let previous_len = positions_by_user.len();
         positions_by_user.retain(|user_id, _| !user_ids.contains(user_id));
         Ok((positions_by_user.len() != previous_len).then(|| positions_by_user.clone()))
+    }
+
+    pub(crate) fn snapshot(&self) -> Result<HashMap<String, CursorPositions>, String> {
+        self.0
+            .read()
+            .map(|positions| positions.clone())
+            .map_err(|error| error.to_string())
     }
 }
 

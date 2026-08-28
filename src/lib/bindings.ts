@@ -59,6 +59,9 @@ async sendImageBytes(recipientId: string, bytes: number[]) : Promise<null> {
 async sendInteraction(recipientId: string, content: InteractionContent) : Promise<null> {
     return await TAURI_INVOKE("send_interaction", { recipientId, content });
 },
+async listPuppetStates() : Promise<PuppetState[]> {
+    return await TAURI_INVOKE("list_puppet_states");
+},
 async openActionWindow(name: string, title: string, pageUrl: string) : Promise<null> {
     return await TAURI_INVOKE("open_action_window", { name, title, pageUrl });
 },
@@ -79,6 +82,7 @@ friendStatusesChanged: FriendStatusesChanged,
 friendsChanged: FriendsChanged,
 networkStatusChanged: NetworkStatusChanged,
 profileChanged: ProfileChanged,
+puppetStatesChanged: PuppetStatesChanged,
 remotesChanged: RemotesChanged
 }>({
 cursorPositionChanged: "cursor-position-changed",
@@ -89,6 +93,7 @@ friendStatusesChanged: "friend-statuses-changed",
 friendsChanged: "friends-changed",
 networkStatusChanged: "network-status-changed",
 profileChanged: "profile-changed",
+puppetStatesChanged: "puppet-states-changed",
 remotesChanged: "remotes-changed"
 })
 
@@ -128,6 +133,8 @@ export type FriendsChanged = { friends: Friend[] }
 export type InteractionContent = { type: "text"; text: string } | { type: "wave" } | { type: "image"; mediaType: string; data: string }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
 export type ProfileChanged = { profile: User }
+export type PuppetState = { id: string; position: CursorPosition; isMoving: boolean }
+export type PuppetStatesChanged = { puppets: PuppetState[] }
 export type Remote = { id: string; address: string; name: string | null; port: number | null }
 export type RemoteInput = { address: string; name: string | null; port: number | null }
 export type RemotesChanged = { remotes: Remote[] }

@@ -4,6 +4,7 @@ import { initFriendsListener } from "./friends";
 import { initInteractionListener } from "./interactions";
 import { initLiveMetadataListeners } from "./live-metadata";
 import { initProfileListener } from "./profile";
+import { initPuppetStatesListener } from "./puppets";
 import { initRemotesListener } from "./remotes";
 
 type Unlisten = () => void;
@@ -20,6 +21,7 @@ export function initAppListeners(): Unlisten {
     initFriendStatusesListener(),
     initLiveMetadataListeners(),
     initInteractionListener(),
+    initPuppetStatesListener(),
   ])
     .then((results) => {
       const listeners = results.flatMap((result) =>
