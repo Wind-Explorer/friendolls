@@ -9,6 +9,7 @@ mod network;
 mod profile;
 mod puppet;
 mod remotes;
+mod skins;
 mod ufa;
 mod ui;
 mod user;
@@ -76,6 +77,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             network::list_statuses,
             network::list_friend_statuses,
             network::resolve_friend_display_name,
+            skins::resolve_skin,
             images::pick_and_send_image,
             images::send_image_bytes,
             interactions::send_interaction,

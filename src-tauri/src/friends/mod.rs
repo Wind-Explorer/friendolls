@@ -13,6 +13,7 @@ use crate::keypair::AppKeypair;
 pub struct Friend {
     pub id: String,
     pub display_name: Option<String>,
+    pub skin_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
@@ -23,7 +24,7 @@ pub struct FriendsChanged {
 
 pub(crate) async fn all(database: &AppDatabase) -> Result<Vec<Friend>, sqlx::Error> {
     sqlx::query_as::<_, Friend>(
-        "SELECT id, display_name FROM friends \
+        "SELECT id, display_name, skin_hash FROM friends \
          ORDER BY display_name IS NULL, display_name COLLATE NOCASE, id",
     )
     .fetch_all(database.pool())
@@ -38,17 +39,26 @@ async fn emit_changed(handle: &AppHandle, database: &AppDatabase) -> Result<(), 
     .map_err(db::command_error)
 }
 
-async fn update_display_names(
+async fn update_profiles(
     database: &AppDatabase,
     profiles: &[wyd_common::Profile],
 ) -> Result<bool, sqlx::Error> {
     let mut transaction = database.pool().begin().await?;
     let mut changed = false;
     for profile in profiles {
+        if profile
+            .skin_hash
+            .as_deref()
+            .is_some_and(|hash| !wyd_common::is_skin_hash(hash))
+        {
+            continue;
+        }
         let result = sqlx::query(
-            "UPDATE friends SET display_name = ?1 WHERE id = ?2 AND display_name IS NOT ?1",
+            "UPDATE friends SET display_name = ?1, skin_hash = ?2 \
+             WHERE id = ?3 AND (display_name IS NOT ?1 OR skin_hash IS NOT ?2)",
         )
         .bind(&profile.display_name)
+        .bind(&profile.skin_hash)
         .bind(&profile.id)
         .execute(&mut *transaction)
         .await?;
@@ -71,7 +81,7 @@ pub(crate) async fn apply_profile_sync(
     database: &AppDatabase,
     profiles: Vec<wyd_common::Profile>,
 ) -> Result<bool, String> {
-    let changed = update_display_names(database, &profiles)
+    let changed = update_profiles(database, &profiles)
         .await
         .map_err(db::command_error)?;
     if changed {
@@ -97,6 +107,7 @@ pub async fn create_friend(
     let friend = Friend {
         id,
         display_name: None,
+        skin_hash: None,
     };
     sqlx::query("INSERT INTO friends (id, display_name) VALUES (?1, NULL)")
         .bind(&friend.id)
@@ -132,7 +143,7 @@ pub async fn get_friend(
     database: State<'_, AppDatabase>,
     id: String,
 ) -> Result<Option<Friend>, String> {
-    sqlx::query_as::<_, Friend>("SELECT id, display_name FROM friends WHERE id = ?1")
+    sqlx::query_as::<_, Friend>("SELECT id, display_name, skin_hash FROM friends WHERE id = ?1")
         .bind(id)
         .fetch_optional(database.pool())
         .await
@@ -191,16 +202,18 @@ mod tests {
             .unwrap();
 
         assert!(
-            update_display_names(
+            update_profiles(
                 &database,
                 &[
                     wyd_common::Profile {
                         id: "friend-id".to_owned(),
                         display_name: "New".to_owned(),
+                        skin_hash: Some("a".repeat(64)),
                     },
                     wyd_common::Profile {
                         id: "missing".to_owned(),
                         display_name: "Name".to_owned(),
+                        skin_hash: None,
                     },
                 ],
             )
@@ -208,11 +221,12 @@ mod tests {
             .unwrap()
         );
         assert!(
-            !update_display_names(
+            !update_profiles(
                 &database,
                 &[wyd_common::Profile {
                     id: "friend-id".to_owned(),
                     display_name: "New".to_owned(),
+                    skin_hash: Some("a".repeat(64)),
                 }],
             )
             .await
@@ -223,6 +237,7 @@ mod tests {
             [Friend {
                 id: "friend-id".to_owned(),
                 display_name: Some("New".to_owned()),
+                skin_hash: Some("a".repeat(64)),
             }]
         );
     }

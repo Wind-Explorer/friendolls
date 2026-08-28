@@ -19,7 +19,13 @@ pub(super) async fn update(
     else {
         return false;
     };
-    if profile.id != public_key || !verify(&client.key, &profile_bytes(&profile), signature) {
+    if profile.id != public_key
+        || profile
+            .skin_hash
+            .as_deref()
+            .is_some_and(|hash| !wyd_common::is_skin_hash(hash))
+        || !verify(&client.key, &profile_bytes(&profile), signature)
+    {
         return false;
     }
     client.profile = profile.clone();
@@ -122,6 +128,7 @@ mod tests {
             profile: Profile {
                 id: id.to_owned(),
                 display_name: display_name.to_owned(),
+                skin_hash: None,
             },
             friends,
             sender,
@@ -164,6 +171,7 @@ mod tests {
         let profile = Profile {
             id: public_key.clone(),
             display_name: "New".to_owned(),
+            skin_hash: Some("a".repeat(64)),
         };
         let signature =
             URL_SAFE_NO_PAD.encode(signing_key.sign(&profile_bytes(&profile)).to_bytes());
@@ -178,6 +186,17 @@ mod tests {
                 .profile
                 .display_name,
             "New"
+        );
+        assert_eq!(
+            clients
+                .lock()
+                .await
+                .get(&public_key)
+                .unwrap()
+                .profile
+                .skin_hash
+                .as_deref(),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         );
         let Message::Text(announcement) = friend_receiver
             .recv()
@@ -197,6 +216,7 @@ mod tests {
         let stale_profile = Profile {
             id: public_key.clone(),
             display_name: "Stale".to_owned(),
+            skin_hash: None,
         };
         let stale_signature =
             URL_SAFE_NO_PAD.encode(signing_key.sign(&profile_bytes(&stale_profile)).to_bytes());

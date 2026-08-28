@@ -1,17 +1,26 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-pub const VERSION: u8 = 2;
+pub const VERSION: u8 = 3;
 pub const MAX_INTERACTION_PAYLOAD_BYTES: usize = 160 * 1024;
 pub const MAX_IMAGE_B64_SIZE: usize = 150 * 1024;
+pub const MAX_SKIN_B64_SIZE: usize = 96 * 1024;
 pub const MAX_IMAGE_DIMENSION: u32 = 480;
 pub const MAX_TEXT_CHARS: usize = 500;
+
+pub fn is_skin_hash(hash: &str) -> bool {
+    hash.len() == 64
+        && hash
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
     pub id: String,
     pub display_name: String,
+    pub skin_hash: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -35,6 +44,17 @@ pub enum ClientMessage {
     ResolveProfile {
         request_id: String,
         user_id: String,
+    },
+    RequestSkin {
+        request_id: String,
+        user_id: String,
+        skin_hash: String,
+    },
+    ProvideSkin {
+        request_id: String,
+        requester_id: String,
+        skin_hash: String,
+        data: Option<String>,
     },
     Signed {
         payload: String,
@@ -115,6 +135,17 @@ pub enum ServerMessage {
         request_id: String,
         profile: Option<Profile>,
     },
+    SkinRequested {
+        request_id: String,
+        requester_id: String,
+        skin_hash: String,
+    },
+    SkinResolved {
+        request_id: String,
+        user_id: String,
+        skin_hash: String,
+        data: Option<String>,
+    },
     FriendStatusChanged {
         friend_id: String,
         online: bool,
@@ -139,9 +170,10 @@ pub enum ServerMessage {
 
 pub fn register_bytes(challenge: &str, profile: &Profile, friends: &[String]) -> Vec<u8> {
     format!(
-        "wyd-register-v{VERSION}\n{challenge}\n{}\n{}\n{}",
+        "wyd-register-v{VERSION}\n{challenge}\n{}\n{}\n{}\n{}",
         profile.id,
         profile.display_name,
+        profile.skin_hash.as_deref().unwrap_or(""),
         friends.join("\n")
     )
     .into_bytes()
@@ -166,8 +198,10 @@ pub fn interaction_bytes(interaction_id: &str, recipient_id: &str, payload: &str
 
 pub fn profile_bytes(profile: &Profile) -> Vec<u8> {
     format!(
-        "wyd-profile-v{VERSION}\n{}\n{}",
-        profile.id, profile.display_name
+        "wyd-profile-v{VERSION}\n{}\n{}\n{}",
+        profile.id,
+        profile.display_name,
+        profile.skin_hash.as_deref().unwrap_or("")
     )
     .into_bytes()
 }
@@ -178,7 +212,7 @@ pub fn friends_bytes(friends: &[String]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{InteractionContent, MAX_TEXT_CHARS, interaction_bytes};
+    use super::{InteractionContent, MAX_TEXT_CHARS, Profile, interaction_bytes, profile_bytes};
 
     #[test]
     fn interaction_signature_bytes_are_length_delimited() {
@@ -210,5 +244,17 @@ mod tests {
             .is_err()
         );
         assert!(serde_json::from_str::<InteractionContent>(r#"{"type":"unknown"}"#).is_err());
+    }
+
+    #[test]
+    fn profile_signature_bytes_include_the_skin_hash() {
+        let mut profile = Profile {
+            id: "id".to_owned(),
+            display_name: "Name".to_owned(),
+            skin_hash: None,
+        };
+        let without_skin = profile_bytes(&profile);
+        profile.skin_hash = Some("a".repeat(64));
+        assert_ne!(without_skin, profile_bytes(&profile));
     }
 }

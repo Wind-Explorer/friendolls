@@ -11,6 +11,7 @@ use specta::Type;
 pub struct User {
     pub id: String,
     pub display_name: String,
+    pub skin_hash: Option<String>,
 }
 
 pub(crate) fn validate_id(id: &str) -> Result<(), String> {

@@ -13,6 +13,7 @@ export class PuppetManager {
     frozenPuppetId: string | null,
     deltaSeconds: number,
     elapsedSeconds: number,
+    skinHashes: ReadonlyMap<string, string | null>,
   ) {
     this.syncPuppets(states);
 
@@ -25,6 +26,7 @@ export class PuppetManager {
           state.id === frozenPuppetId,
           deltaSeconds,
           elapsedSeconds,
+          skinHashes.get(state.id) ?? null,
         );
     }
   }

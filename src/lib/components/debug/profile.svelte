@@ -12,7 +12,7 @@
     error = "";
 
     try {
-      await commands.updateProfile(displayName);
+      await commands.updateProfile(displayName, null);
     } catch (err) {
       error = String(err);
     }

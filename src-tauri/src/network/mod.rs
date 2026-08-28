@@ -3,28 +3,25 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
-use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 use tokio::sync::{mpsc, oneshot, watch};
-use tokio_tungstenite::tungstenite::Message;
-use wyd_common::{
-    ClientMessage, InteractionContent, InteractionDeliveryStatus, Profile, ServerMessage,
-    friends_bytes, interaction_bytes, message_bytes, profile_bytes, register_bytes,
-};
+use wyd_common::{InteractionContent, InteractionDeliveryStatus};
 
 use crate::db::AppDatabase;
 use crate::friends::{self, FriendsChanged};
-use crate::interactions;
 use crate::keypair::AppKeypair;
 use crate::live_data::LiveData;
 use crate::remotes::{self, Remote, RemotesChanged};
 
+mod connection;
 mod presence;
 
+use connection::{ConnectionInputs, InteractionRequest, ProfileLookupRequest, SkinLookupRequest};
 use presence::{Change as FriendPresenceChange, FriendPresence};
 
 type Statuses = Arc<Mutex<HashMap<String, (u64, ConnectionStatus)>>>;
@@ -63,30 +60,9 @@ struct Connection {
     sender: mpsc::Sender<String>,
     interaction_sender: mpsc::Sender<InteractionRequest>,
     profile_lookup_sender: mpsc::Sender<ProfileLookupRequest>,
+    skin_lookup_sender: mpsc::Sender<SkinLookupRequest>,
     task: tauri::async_runtime::JoinHandle<()>,
     generation: u64,
-}
-
-struct InteractionRequest {
-    interaction_id: String,
-    recipient_id: String,
-    payload: String,
-    response: oneshot::Sender<InteractionDeliveryStatus>,
-}
-
-struct ProfileLookupRequest {
-    request_id: String,
-    user_id: String,
-    response: oneshot::Sender<Option<String>>,
-}
-
-struct ConnectionInputs {
-    profiles: watch::Receiver<crate::user::User>,
-    friends: watch::Receiver<Vec<String>>,
-    keypair: AppKeypair,
-    live_data: mpsc::Receiver<String>,
-    interactions: mpsc::Receiver<InteractionRequest>,
-    profile_lookups: mpsc::Receiver<ProfileLookupRequest>,
 }
 
 pub struct Network {
@@ -100,6 +76,10 @@ pub struct Network {
 }
 
 impl Network {
+    pub(crate) fn public_key(&self) -> &str {
+        self.keypair.public_key()
+    }
+
     pub fn send_live_data(&self, data: LiveData) {
         let Ok(payload) = serde_json::to_string(&data) else {
             eprintln!("failed to serialize live data");
@@ -222,6 +202,53 @@ impl Network {
         Ok(None)
     }
 
+    pub(crate) async fn request_skin(
+        &self,
+        user_id: String,
+        skin_hash: String,
+    ) -> Result<Option<Vec<u8>>, String> {
+        if user_id == self.keypair.public_key() {
+            return Ok(None);
+        }
+
+        let senders: Vec<_> = self
+            .connections
+            .lock()
+            .map_err(|error| error.to_string())?
+            .values()
+            .map(|connection| connection.skin_lookup_sender.clone())
+            .collect();
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let mut responses = Vec::new();
+        for sender in senders {
+            let (response, receiver) = oneshot::channel();
+            if sender
+                .try_send(SkinLookupRequest {
+                    request_id: request_id.clone(),
+                    user_id: user_id.clone(),
+                    skin_hash: skin_hash.clone(),
+                    response,
+                })
+                .is_ok()
+            {
+                responses.push(receiver);
+            }
+        }
+
+        let mut pending: FuturesUnordered<_> = responses
+            .into_iter()
+            .map(|response| tokio::time::timeout(Duration::from_secs(3), response))
+            .collect();
+        while let Some(result) = pending.next().await {
+            if let Ok(Ok(Some(data))) = result
+                && let Some(bytes) = crate::skins::decode_response(&data, &skin_hash)
+            {
+                return Ok(Some(bytes));
+            }
+        }
+        Ok(None)
+    }
+
     fn sync_remotes(&self, handle: &AppHandle, remotes: Vec<Remote>) -> Result<(), String> {
         let desired: HashMap<_, _> = remotes
             .into_iter()
@@ -252,13 +279,14 @@ impl Network {
             let (sender, receiver) = mpsc::channel(32);
             let (interaction_sender, interaction_receiver) = mpsc::channel(16);
             let (profile_lookup_sender, profile_lookup_receiver) = mpsc::channel(16);
+            let (skin_lookup_sender, skin_lookup_receiver) = mpsc::channel(16);
             set_initial(
                 &self.statuses,
                 &remote,
                 generation,
                 ConnectionState::Connecting,
             );
-            let task = tauri::async_runtime::spawn(run(
+            let task = tauri::async_runtime::spawn(connection::run(
                 handle.clone(),
                 self.statuses.clone(),
                 self.friend_presence.clone(),
@@ -271,6 +299,7 @@ impl Network {
                     live_data: receiver,
                     interactions: interaction_receiver,
                     profile_lookups: profile_lookup_receiver,
+                    skin_lookups: skin_lookup_receiver,
                 },
             ));
             connections.insert(
@@ -280,6 +309,7 @@ impl Network {
                     sender,
                     interaction_sender,
                     profile_lookup_sender,
+                    skin_lookup_sender,
                     task,
                     generation,
                 },
@@ -332,244 +362,6 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         apply_friend_presence_change(&listener_handle, network.friend_presence.retain(&ids));
     });
     Ok(())
-}
-
-async fn run(
-    handle: AppHandle,
-    statuses: Statuses,
-    friend_presence: Arc<FriendPresence>,
-    remote: Remote,
-    generation: u64,
-    mut inputs: ConnectionInputs,
-) {
-    loop {
-        changed(
-            &handle,
-            &statuses,
-            &remote,
-            generation,
-            ConnectionState::Connecting,
-        );
-        if let Err(error) = connect(
-            &handle,
-            &statuses,
-            &friend_presence,
-            &remote,
-            generation,
-            &mut inputs,
-        )
-        .await
-        {
-            eprintln!("remote {} disconnected: {error}", remote.id);
-        }
-        apply_friend_presence_change(&handle, friend_presence.remove(&remote.id));
-        changed(
-            &handle,
-            &statuses,
-            &remote,
-            generation,
-            ConnectionState::Disconnected,
-        );
-        tokio::time::sleep(Duration::from_secs(5)).await;
-    }
-}
-
-async fn connect(
-    handle: &AppHandle,
-    statuses: &Statuses,
-    friend_presence: &FriendPresence,
-    remote: &Remote,
-    generation: u64,
-    inputs: &mut ConnectionInputs,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ConnectionInputs {
-        profiles,
-        friends,
-        keypair,
-        live_data,
-        interactions: active_outgoing,
-        profile_lookups,
-    } = inputs;
-    let (socket, _) = tokio_tungstenite::connect_async(url(remote)).await?;
-    let (mut writer, mut reader) = socket.split();
-
-    let challenge = match recv(&mut reader).await? {
-        ServerMessage::Challenge { version, challenge } if version == wyd_common::VERSION => {
-            challenge
-        }
-        _ => return Err("server did not send a compatible challenge".into()),
-    };
-    let current = profiles.borrow_and_update().clone();
-    let registration_profile = Profile {
-        id: current.id,
-        display_name: current.display_name,
-    };
-    let registration_friends = friends.borrow_and_update().clone();
-    send(
-        &mut writer,
-        &ClientMessage::Register {
-            signature: keypair.sign(&register_bytes(
-                &challenge,
-                &registration_profile,
-                &registration_friends,
-            )),
-            profile: registration_profile,
-            friends: registration_friends,
-        },
-    )
-    .await?;
-
-    if !matches!(recv(&mut reader).await?, ServerMessage::Registered) {
-        return Err("server rejected registration".into());
-    }
-    while live_data.try_recv().is_ok() {}
-    while let Ok(request) = active_outgoing.try_recv() {
-        let _ = request
-            .response
-            .send(InteractionDeliveryStatus::Unavailable);
-    }
-    send(&mut writer, &ClientMessage::SyncFriendProfiles).await?;
-    send(&mut writer, &ClientMessage::SyncFriendStatuses).await?;
-    changed(
-        handle,
-        statuses,
-        remote,
-        generation,
-        ConnectionState::Connected,
-    );
-
-    let mut pending_interactions = HashMap::new();
-    let mut pending_profile_lookups: HashMap<String, (String, oneshot::Sender<Option<String>>)> =
-        HashMap::new();
-    loop {
-        tokio::select! {
-            payload = live_data.recv() => {
-                let payload = payload.ok_or("network sender closed")?;
-                send(&mut writer, &ClientMessage::Signed {
-                    signature: keypair.sign(&message_bytes(&payload)),
-                    payload,
-                }).await?;
-            }
-            request = active_outgoing.recv() => {
-                let request = request.ok_or("interaction sender closed")?;
-                let signature = keypair.sign(&interaction_bytes(
-                    &request.interaction_id,
-                    &request.recipient_id,
-                    &request.payload,
-                ));
-                send(&mut writer, &ClientMessage::Interaction {
-                    interaction_id: request.interaction_id.clone(),
-                    recipient_id: request.recipient_id,
-                    payload: request.payload,
-                    signature,
-                }).await?;
-                pending_interactions.insert(request.interaction_id, request.response);
-            }
-            request = profile_lookups.recv() => {
-                let request = request.ok_or("profile lookup sender closed")?;
-                if request.response.is_closed() {
-                    continue;
-                }
-                pending_profile_lookups.retain(|_, (_, response)| !response.is_closed());
-                send(&mut writer, &ClientMessage::ResolveProfile {
-                    request_id: request.request_id.clone(),
-                    user_id: request.user_id.clone(),
-                }).await?;
-                pending_profile_lookups.insert(
-                    request.request_id,
-                    (request.user_id, request.response),
-                );
-            }
-            changed = profiles.changed() => {
-                changed.map_err(|_| "profile sender closed")?;
-                let current = profiles.borrow_and_update().clone();
-                let profile = Profile {
-                    id: current.id,
-                    display_name: current.display_name,
-                };
-                send(&mut writer, &ClientMessage::ProfileUpdated {
-                    signature: keypair.sign(&profile_bytes(&profile)),
-                    profile,
-                }).await?;
-            }
-            changed = friends.changed() => {
-                changed.map_err(|_| "friends sender closed")?;
-                let friends = friends.borrow_and_update().clone();
-                send(&mut writer, &ClientMessage::FriendsUpdated {
-                    signature: keypair.sign(&friends_bytes(&friends)),
-                    friends,
-                }).await?;
-            }
-            message = reader.next() => match message.ok_or("server closed the socket")?? {
-                Message::Text(text) => match serde_json::from_str(&text)? {
-                    ServerMessage::FriendProfileUpdated { profile } => {
-                        let database = handle.state::<AppDatabase>();
-                        if let Err(error) = friends::apply_profile_update(handle, &database, profile).await {
-                            eprintln!("failed to update friend profile: {error}");
-                        }
-                    }
-                    ServerMessage::FriendProfiles { profiles } => {
-                        let database = handle.state::<AppDatabase>();
-                        if let Err(error) = friends::apply_profile_sync(handle, &database, profiles).await {
-                            eprintln!("failed to synchronize friend profiles: {error}");
-                        }
-                    }
-                    ServerMessage::FriendStatusChanged { friend_id, online } => {
-                        update_friend_presence(
-                            handle,
-                            friend_presence,
-                            &remote.id,
-                            friend_id,
-                            online,
-                        );
-                    }
-                    ServerMessage::FriendStatuses { friend_ids } => {
-                        apply_friend_presence_change(
-                            handle,
-                            friend_presence.replace(&remote.id, friend_ids),
-                        );
-                    }
-                    ServerMessage::FriendLiveData { friend_id, payload } => {
-                        match serde_json::from_str(&payload) {
-                            Ok(LiveData::Cursor { positions }) => {
-                                crate::cursor::emit_position(handle, friend_id, positions);
-                            }
-                            Ok(LiveData::ForegroundApp { meta }) => {
-                                crate::ufa::emit_friend_app(handle, friend_id, meta);
-                            }
-                            Err(error) => {
-                                eprintln!("failed to decode friend live data: {error}");
-                            }
-                        }
-                    }
-                    ServerMessage::FriendInteraction {
-                        interaction_id,
-                        friend_id,
-                        payload,
-                    } => {
-                        interactions::receive(handle, interaction_id, friend_id, &payload);
-                    }
-                    ServerMessage::InteractionDelivery { interaction_id, status } => {
-                        if let Some(response) = pending_interactions.remove(&interaction_id) {
-                            let _ = response.send(status);
-                        }
-                    }
-                    ServerMessage::ProfileResolved { request_id, profile } => {
-                        if let Some((user_id, response)) = pending_profile_lookups.remove(&request_id) {
-                            let display_name = profile
-                                .filter(|profile| profile.id == user_id)
-                                .map(|profile| profile.display_name);
-                            let _ = response.send(display_name);
-                        }
-                    }
-                    _ => {}
-                },
-                Message::Ping(data) => writer.send(Message::Pong(data)).await?,
-                Message::Close(_) => return Ok(()),
-                _ => {}
-            }
-        }
-    }
 }
 
 #[tauri::command]
@@ -702,52 +494,6 @@ fn snapshot(statuses: &Statuses) -> Result<Vec<ConnectionStatus>, String> {
     Ok(statuses)
 }
 
-async fn send<S>(
-    writer: &mut S,
-    message: &ClientMessage,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
-where
-    S: futures_util::Sink<Message> + Unpin,
-    S::Error: std::error::Error + Send + Sync + 'static,
-{
-    writer
-        .send(Message::Text(serde_json::to_string(message)?.into()))
-        .await?;
-    Ok(())
-}
-
-async fn recv<S>(reader: &mut S) -> Result<ServerMessage, Box<dyn std::error::Error + Send + Sync>>
-where
-    S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
-{
-    while let Some(message) = reader.next().await {
-        if let Message::Text(text) = message? {
-            return Ok(serde_json::from_str(&text)?);
-        }
-    }
-    Err("server closed the socket".into())
-}
-
-fn url(remote: &Remote) -> String {
-    let address = remote.address.trim_end_matches('/');
-    let address = address
-        .strip_prefix("http://")
-        .or_else(|| address.strip_prefix("https://"))
-        .or_else(|| address.strip_prefix("ws://"))
-        .or_else(|| address.strip_prefix("wss://"))
-        .unwrap_or(address);
-    let scheme = if remote.address.starts_with("https://") || remote.address.starts_with("wss://") {
-        "wss"
-    } else {
-        "ws"
-    };
-    let port = remote
-        .port
-        .map(|port| format!(":{port}"))
-        .unwrap_or_default();
-    format!("{scheme}://{address}{port}/v1/ws")
-}
-
 fn friend_ids(friends: Vec<crate::friends::Friend>, own_id: &str) -> Vec<String> {
     let mut ids: Vec<_> = friends
         .into_iter()
@@ -770,14 +516,17 @@ mod tests {
             Friend {
                 id: "friend-b".to_owned(),
                 display_name: Some("Old name".to_owned()),
+                skin_hash: None,
             },
             Friend {
                 id: "self".to_owned(),
                 display_name: None,
+                skin_hash: None,
             },
             Friend {
                 id: "friend-a".to_owned(),
                 display_name: Some("Any name".to_owned()),
+                skin_hash: None,
             },
         ];
 

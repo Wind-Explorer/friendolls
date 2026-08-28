@@ -35,8 +35,8 @@ async deleteRemote(id: string) : Promise<boolean> {
 async getProfile() : Promise<User> {
     return await TAURI_INVOKE("get_profile");
 },
-async updateProfile(displayName: string) : Promise<User> {
-    return await TAURI_INVOKE("update_profile", { displayName });
+async updateProfile(displayName: string, skinData: number[] | null) : Promise<User> {
+    return await TAURI_INVOKE("update_profile", { displayName, skinData });
 },
 async getPublicKey() : Promise<string> {
     return await TAURI_INVOKE("get_public_key");
@@ -49,6 +49,9 @@ async listFriendStatuses() : Promise<string[]> {
 },
 async resolveFriendDisplayName(userId: string) : Promise<string | null> {
     return await TAURI_INVOKE("resolve_friend_display_name", { userId });
+},
+async resolveSkin(userId: string, skinHash: string) : Promise<string | null> {
+    return await TAURI_INVOKE("resolve_skin", { userId, skinHash });
 },
 async pickAndSendImage(recipientId: string) : Promise<boolean> {
     return await TAURI_INVOKE("pick_and_send_image", { recipientId });
@@ -125,7 +128,7 @@ export type ForegroundAppChanged = { meta: AppMeta }
  * A configured public-key relationship with optional cached remote metadata.
  * The display name remains absent until learned from a signed remote profile.
  */
-export type Friend = { id: string; displayName: string | null }
+export type Friend = { id: string; displayName: string | null; skinHash: string | null }
 export type FriendForegroundAppChanged = { friendId: string; meta: AppMeta }
 export type FriendInteractionReceived = { interactionId: string; friendId: string; content: InteractionContent }
 export type FriendStatusesChanged = { friendIds: string[] }
@@ -143,7 +146,7 @@ export type SceneHitbox = { x: number; y: number; width: number; height: number 
  * Public user identity exchanged with peers and remote servers. `id` is the
  * user's Ed25519 public key and is not persisted as local profile metadata.
  */
-export type User = { id: string; displayName: string }
+export type User = { id: string; displayName: string; skinHash: string | null }
 
 /** tauri-specta globals **/
 

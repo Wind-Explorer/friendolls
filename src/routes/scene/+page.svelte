@@ -27,6 +27,16 @@
         id === $liveMetadata.localId || $onlineFriendIds.has(id),
     ),
   );
+  let skinHashes = $derived(
+    new Map(
+      visiblePuppets.map(({ id }) => [
+        id,
+        id === $profile?.id
+          ? $profile.skinHash
+          : ($friends.find((friend) => friend.id === id)?.skinHash ?? null),
+      ]),
+    ),
+  );
 
   onMount(startHitboxSync);
 
@@ -94,6 +104,7 @@
     puppets={visiblePuppets}
     frozenPuppetId={selectedUserId}
     onBoundsChange={(bounds) => (puppetBounds = bounds)}
+    {skinHashes}
   />
 
   <div role="banner" class="pointer-events-none fixed inset-0 z-10">

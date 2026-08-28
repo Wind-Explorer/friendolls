@@ -2,13 +2,26 @@ import type { PuppetState } from "$lib/bindings";
 import * as THREE from "three";
 import type { World } from "../world";
 import { PuppetAnimation } from "./animation";
+import { PuppetSkin } from "./skin";
 
 export type PuppetRig = {
   root: THREE.Group;
+  body: THREE.Mesh<THREE.BoxGeometry, THREE.Material | THREE.Material[]>;
+  head: THREE.Mesh<THREE.BoxGeometry, THREE.Material | THREE.Material[]>;
   leftArm: THREE.Group;
+  leftArmMesh: THREE.Mesh<THREE.BoxGeometry, THREE.Material | THREE.Material[]>;
   rightArm: THREE.Group;
+  rightArmMesh: THREE.Mesh<
+    THREE.BoxGeometry,
+    THREE.Material | THREE.Material[]
+  >;
   leftLeg: THREE.Group;
+  leftLegMesh: THREE.Mesh<THREE.BoxGeometry, THREE.Material | THREE.Material[]>;
   rightLeg: THREE.Group;
+  rightLegMesh: THREE.Mesh<
+    THREE.BoxGeometry,
+    THREE.Material | THREE.Material[]
+  >;
 };
 
 export class Puppet {
@@ -16,12 +29,16 @@ export class Puppet {
 
   private readonly rig: PuppetRig;
   private readonly animation: PuppetAnimation;
+  private readonly skin: PuppetSkin;
   private readonly targetGroundPosition = new THREE.Vector3();
 
   constructor(readonly id: string) {
     this.rig = this.createRig();
     this.root = this.rig.root;
     this.animation = new PuppetAnimation(this.rig);
+    const placeholderMaterial = this.rig.body.material;
+    this.skin = new PuppetSkin(id, this.rig);
+    if (!Array.isArray(placeholderMaterial)) placeholderMaterial.dispose();
   }
 
   update(
@@ -30,7 +47,9 @@ export class Puppet {
     frozen: boolean,
     deltaSeconds: number,
     elapsedSeconds: number,
+    skinHash: string | null,
   ) {
+    this.skin.update(skinHash);
     if (frozen) {
       this.animation.pause();
       return;
@@ -50,28 +69,18 @@ export class Puppet {
   }
 
   dispose() {
-    const disposedMaterials = new Set<THREE.Material>();
+    this.skin.dispose();
 
     this.root.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return;
 
       object.geometry.dispose();
-      const materials = Array.isArray(object.material)
-        ? object.material
-        : [object.material];
-      for (const material of materials) {
-        if (disposedMaterials.has(material)) continue;
-        material.dispose();
-        disposedMaterials.add(material);
-      }
     });
   }
 
   private createRig(): PuppetRig {
     const root = new THREE.Group();
-    const material = new THREE.MeshStandardMaterial({
-      color: this.colorFromId(),
-    });
+    const material = new THREE.MeshStandardMaterial();
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(16, 24, 8), material);
     body.position.y = 36;
@@ -79,14 +88,54 @@ export class Puppet {
     const head = new THREE.Mesh(new THREE.BoxGeometry(16, 16, 16), material);
     head.position.y = 56;
 
-    const leftArm = this.createLimbPivot(-12, 48, 8, 24, 8, material);
-    const rightArm = this.createLimbPivot(12, 48, 8, 24, 8, material);
-    const leftLeg = this.createLimbPivot(-4, 24, 8, 24, 8, material);
-    const rightLeg = this.createLimbPivot(4, 24, 8, 24, 8, material);
+    const { pivot: leftArm, mesh: leftArmMesh } = this.createLimbPivot(
+      -12,
+      48,
+      8,
+      24,
+      8,
+      material,
+    );
+    const { pivot: rightArm, mesh: rightArmMesh } = this.createLimbPivot(
+      12,
+      48,
+      8,
+      24,
+      8,
+      material,
+    );
+    const { pivot: leftLeg, mesh: leftLegMesh } = this.createLimbPivot(
+      -4,
+      24,
+      8,
+      24,
+      8,
+      material,
+    );
+    const { pivot: rightLeg, mesh: rightLegMesh } = this.createLimbPivot(
+      4,
+      24,
+      8,
+      24,
+      8,
+      material,
+    );
 
     root.add(body, head, leftArm, rightArm, leftLeg, rightLeg);
 
-    return { root, leftArm, rightArm, leftLeg, rightLeg };
+    return {
+      root,
+      body,
+      head,
+      leftArm,
+      leftArmMesh,
+      rightArm,
+      rightArmMesh,
+      leftLeg,
+      leftLegMesh,
+      rightLeg,
+      rightLegMesh,
+    };
   }
 
   private createLimbPivot(
@@ -107,15 +156,6 @@ export class Puppet {
     limb.position.y = -height / 2;
     pivot.add(limb);
 
-    return pivot;
-  }
-
-  private colorFromId() {
-    let hash = 0;
-    for (const character of this.id) {
-      hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-    }
-
-    return new THREE.Color().setHSL((hash % 360) / 360, 0.55, 0.62);
+    return { pivot, mesh: limb };
   }
 }

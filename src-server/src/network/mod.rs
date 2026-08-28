@@ -18,6 +18,7 @@ use wyd_common::{ClientMessage, Profile, ServerMessage, message_bytes, register_
 mod interactions;
 mod presence;
 mod profiles;
+mod skins;
 
 type Clients = Arc<Mutex<HashMap<String, Client>>>;
 
@@ -70,6 +71,13 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
     else {
         return;
     };
+    if profile
+        .skin_hash
+        .as_deref()
+        .is_some_and(|hash| !wyd_common::is_skin_hash(hash))
+    {
+        return;
+    }
     let Ok(key) = key(&profile.id) else { return };
     if !verify(
         &key,
@@ -208,6 +216,42 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
                             break;
                         }
                     }
+                    Ok(ClientMessage::RequestSkin { request_id, user_id, skin_hash }) => {
+                        match skins::request(
+                            &clients,
+                            &public_key,
+                            connection_id,
+                            request_id,
+                            user_id,
+                            skin_hash,
+                        ).await {
+                            skins::RequestOutcome::StaleSession => break,
+                            skins::RequestOutcome::Forwarded => {}
+                            skins::RequestOutcome::Unavailable(response) => {
+                                if writer.send(response).await.is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Ok(ClientMessage::ProvideSkin {
+                        request_id,
+                        requester_id,
+                        skin_hash,
+                        data,
+                    }) => {
+                        if !skins::provide(
+                            &clients,
+                            &public_key,
+                            connection_id,
+                            request_id,
+                            requester_id,
+                            skin_hash,
+                            data,
+                        ).await {
+                            break;
+                        }
+                    }
                     _ => break,
                 }
                 Some(Ok(Message::Ping(data))) => {
@@ -301,6 +345,7 @@ mod tests {
         let profile = Profile {
             id: URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes()),
             display_name: "Wind".to_owned(),
+            skin_hash: None,
         };
         let friends = vec!["friend".to_owned()];
         let registration = register_bytes("challenge", &profile, &friends);
@@ -347,6 +392,7 @@ mod tests {
                 profile: Profile {
                     id: public_key.clone(),
                     display_name: "Wind".to_owned(),
+                    skin_hash: None,
                 },
                 friends: Vec::new(),
                 sender,
@@ -390,6 +436,7 @@ mod tests {
                 profile: Profile {
                     id: "source".to_owned(),
                     display_name: "Source".to_owned(),
+                    skin_hash: None,
                 },
                 friends: vec!["mutual".to_owned()],
                 sender: source_sender,
@@ -403,6 +450,7 @@ mod tests {
                 profile: Profile {
                     id: "mutual".to_owned(),
                     display_name: "Mutual".to_owned(),
+                    skin_hash: None,
                 },
                 friends: vec!["source".to_owned()],
                 sender: mutual_sender,
@@ -416,6 +464,7 @@ mod tests {
                 profile: Profile {
                     id: "one-way".to_owned(),
                     display_name: "One way".to_owned(),
+                    skin_hash: None,
                 },
                 friends: vec!["source".to_owned()],
                 sender: one_way_sender,
@@ -494,6 +543,7 @@ mod tests {
                 profile: Profile {
                     id: public_key.clone(),
                     display_name: "Source".to_owned(),
+                    skin_hash: None,
                 },
                 friends: vec!["mutual".to_owned(), "sender-only".to_owned()],
                 sender: source_sender,
@@ -516,6 +566,7 @@ mod tests {
                     profile: Profile {
                         id: id.to_owned(),
                         display_name: id.to_owned(),
+                        skin_hash: None,
                     },
                     friends,
                     sender,

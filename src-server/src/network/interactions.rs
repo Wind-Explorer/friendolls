@@ -161,6 +161,7 @@ mod tests {
                 profile: Profile {
                     id: public_key.clone(),
                     display_name: "Source".to_owned(),
+                    skin_hash: None,
                 },
                 friends: vec!["target".to_owned(), "one-sided".to_owned()],
                 sender: source_sender,
@@ -174,6 +175,7 @@ mod tests {
                 profile: Profile {
                     id: "target".to_owned(),
                     display_name: "Target".to_owned(),
+                    skin_hash: None,
                 },
                 friends: vec![public_key.clone()],
                 sender: target_sender.clone(),
@@ -187,6 +189,7 @@ mod tests {
                 profile: Profile {
                     id: "one-sided".to_owned(),
                     display_name: "One-sided".to_owned(),
+                    skin_hash: None,
                 },
                 friends: Vec::new(),
                 sender: one_sided_sender,
@@ -305,6 +308,7 @@ mod tests {
                 profile: Profile {
                     id: public_key.clone(),
                     display_name: "Source".to_owned(),
+                    skin_hash: None,
                 },
                 friends: vec!["target".to_owned()],
                 sender: source_sender,
@@ -318,6 +322,7 @@ mod tests {
                 profile: Profile {
                     id: "target".to_owned(),
                     display_name: "Target".to_owned(),
+                    skin_hash: None,
                 },
                 friends: vec![public_key.clone()],
                 sender: target_sender,

@@ -16,19 +16,21 @@ pub struct ProfileChanged {
 }
 
 pub async fn get(database: &AppDatabase, public_key: &str) -> Result<User, sqlx::Error> {
-    let display_name =
-        sqlx::query_scalar::<_, String>("SELECT display_name FROM profile WHERE id = ?1")
-            .bind(PROFILE_ID)
-            .fetch_one(database.pool())
-            .await?;
+    let (display_name, skin_hash) = sqlx::query_as::<_, (String, Option<String>)>(
+        "SELECT display_name, skin_hash FROM profile WHERE id = ?1",
+    )
+    .bind(PROFILE_ID)
+    .fetch_one(database.pool())
+    .await?;
 
     Ok(User {
         id: public_key.to_owned(),
-        display_name: if display_name.len() <= 0 {
+        display_name: if display_name.is_empty() {
             "Anonymous".to_string()
         } else {
             display_name
         },
+        skin_hash,
     })
 }
 
@@ -36,12 +38,16 @@ async fn update(
     database: &AppDatabase,
     public_key: &str,
     display_name: String,
+    skin_hash: Option<String>,
 ) -> Result<User, sqlx::Error> {
-    sqlx::query("UPDATE profile SET display_name = ?1 WHERE id = ?2")
-        .bind(display_name)
-        .bind(PROFILE_ID)
-        .execute(database.pool())
-        .await?;
+    sqlx::query(
+        "UPDATE profile SET display_name = ?1, skin_hash = COALESCE(?2, skin_hash) WHERE id = ?3",
+    )
+    .bind(display_name)
+    .bind(skin_hash)
+    .bind(PROFILE_ID)
+    .execute(database.pool())
+    .await?;
 
     get(database, public_key).await
 }
@@ -74,8 +80,13 @@ pub async fn update_profile(
     keypair: State<'_, AppKeypair>,
     network: State<'_, Network>,
     display_name: String,
+    skin_data: Option<Vec<u8>>,
 ) -> Result<User, String> {
-    let profile = update(&database, keypair.public_key(), display_name)
+    let skin_hash = skin_data
+        .as_deref()
+        .map(|data| crate::skins::store_local(&handle, data))
+        .transpose()?;
+    let profile = update(&database, keypair.public_key(), display_name, skin_hash)
         .await
         .map_err(db::command_error)?;
     network.update_profile(profile.clone());
@@ -106,7 +117,7 @@ mod tests {
     async fn profile_uses_the_supplied_keypair_identity() {
         let database = database().await;
 
-        let profile = update(&database, "public-key", "Wind".to_owned())
+        let profile = update(&database, "public-key", "Wind".to_owned(), None)
             .await
             .expect("update profile");
 
@@ -115,6 +126,7 @@ mod tests {
             User {
                 id: "public-key".to_owned(),
                 display_name: "Wind".to_owned(),
+                skin_hash: None,
             }
         );
         assert_eq!(
@@ -122,8 +134,20 @@ mod tests {
             User {
                 id: "rotated-public-key".to_owned(),
                 display_name: "Wind".to_owned(),
+                skin_hash: None,
             }
         );
+
+        let profile = update(
+            &database,
+            "public-key",
+            "Wind Two".to_owned(),
+            Some("a".repeat(64)),
+        )
+        .await
+        .expect("update profile and skin together");
+        assert_eq!(profile.display_name, "Wind Two");
+        assert_eq!(profile.skin_hash, Some("a".repeat(64)));
     }
 
     #[tokio::test]
@@ -136,6 +160,6 @@ mod tests {
         .await
         .expect("read profile columns");
 
-        assert_eq!(columns, vec!["id", "display_name"]);
+        assert_eq!(columns, vec!["id", "display_name", "skin_hash"]);
     }
 }

@@ -10,10 +10,12 @@
     puppets,
     frozenPuppetId,
     onBoundsChange,
+    skinHashes,
   }: {
     puppets: readonly PuppetState[];
     frozenPuppetId: string | null;
     onBoundsChange: (bounds: PuppetScreenBounds[]) => void;
+    skinHashes: ReadonlyMap<string, string | null>;
   } = $props();
 
   let renderDiv = $state<HTMLDivElement | null>(null);
@@ -37,6 +39,7 @@
       frozenPuppetId,
       clock.getDelta(),
       clock.getElapsed(),
+      skinHashes,
     );
     world.render();
 
