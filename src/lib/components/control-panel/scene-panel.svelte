@@ -109,62 +109,57 @@
   }
 </script>
 
-<div class="space-y-3">
+<div class="space-y-1">
   {#if error || $sceneConfigurationListenerError || $profileListenerError}
     <PanelMessage kind="error">
       {error || $sceneConfigurationListenerError || $profileListenerError}
     </PanelMessage>
   {/if}
 
-  <fieldset class="fieldset border border-base-300 bg-base-100 p-3">
-    <legend class="fieldset-legend px-1">Puppets</legend>
-
-    <div
-      class="grid grid-cols-[minmax(0,3fr)_minmax(0,4fr)] items-center gap-3"
-    >
-      <div class="flex flex-col gap-2">
-        <div class="aspect-square min-w-0">
-          {#if $profile}
-            <div
-              class="border border-primary relative shadow-[inset_0_0_10px] bg-primary/5 shadow-primary card"
-            >
+  <div class="grid grid-cols-[minmax(0,3fr)_minmax(0,4fr)] items-center gap-3">
+    <div class="flex flex-col gap-2">
+      <div class="aspect-square min-w-0 mt-2">
+        {#if $profile}
+          <div
+            class="border border-primary relative shadow-[inset_0_0_10px] bg-primary/5 shadow-primary card"
+          >
+            <div class="size-full absolute bg-gridded opacity-25 inset-0"></div>
+            <div class="size-full absolute">
               <div
-                class="size-full absolute bg-gridded opacity-25 inset-0"
-              ></div>
-              <div class="size-full absolute">
-                <div
-                  class="flex flex-row size-full items-end justify-between text-[10px] text-primary p-1"
-                >
-                  <div class="text-start flex flex-col">
-                    <p>Scale</p>
-                    <p>Opacity</p>
-                  </div>
-                  <div class="text-end flex flex-col">
-                    <p>{(puppetScale * 100).toFixed(0)}%</p>
-                    <p>{(puppetOpacity * 100).toFixed(0)}%</p>
-                  </div>
+                class="flex flex-row size-full items-end justify-between text-[10px] text-primary p-1"
+              >
+                <div class="text-start flex flex-col">
+                  <p>Scale</p>
+                  <p>Opacity</p>
+                </div>
+                <div class="text-end flex flex-col">
+                  <p>{(puppetScale * 100).toFixed(0)}%</p>
+                  <p>{(puppetOpacity * 100).toFixed(0)}%</p>
                 </div>
               </div>
-              <div class="size-full z-10">
-                <PuppetPreview
-                  userId={$profile.id}
-                  skinHash={$profile.skinHash}
-                  skinSource={skinPreviewUrl}
-                  scale={puppetScale}
-                  opacity={puppetOpacity}
-                />
-              </div>
             </div>
-          {:else}
-            <div
-              class="skeleton aspect-square size-full"
-              aria-label="Loading puppet preview"
-            ></div>
-          {/if}
-        </div>
+            <div class="size-full z-10">
+              <PuppetPreview
+                userId={$profile.id}
+                skinHash={$profile.skinHash}
+                skinSource={skinPreviewUrl}
+                scale={puppetScale}
+                opacity={puppetOpacity}
+              />
+            </div>
+          </div>
+        {:else}
+          <div
+            class="skeleton aspect-square size-full"
+            aria-label="Loading puppet preview"
+          ></div>
+        {/if}
       </div>
+    </div>
 
-      <div class="min-w-0 space-y-2">
+    <div class="min-w-0 space-y-2">
+      <fieldset class="fieldset border border-base-300 bg-base-100 p-3 pt-1">
+        <legend class="fieldset-legend px-1">All puppets</legend>
         <div>
           <label class="fieldset-label" for="puppet-scale">Scale</label>
           <input
@@ -196,98 +191,93 @@
             aria-describedby="puppet-opacity-help"
           />
         </div>
-
-        <div>
-          <label class="fieldset-label" for="puppet-skin">Custom Skin</label>
-          <div>
-            <button
-              class="btn w-full"
-              type="button"
-              disabled={!$profile || busy}
-              onclick={() => skinInput?.click()}
-            >
-              Choose file
-            </button>
-            <input
-              id="skin-file"
-              class="hidden"
-              type="file"
-              accept="image/png"
-              bind:this={skinInput}
-              onchange={(event) =>
-                selectSkinFile(event.currentTarget.files?.[0] ?? null)}
-            />
-          </div>
-        </div>
+      </fieldset>
+      <div>
+        <button
+          class="btn w-full"
+          type="button"
+          disabled={!$profile || busy}
+          onclick={() => skinInput?.click()}
+        >
+          Choose a custom skin
+        </button>
+        <input
+          id="skin-file"
+          class="hidden"
+          type="file"
+          accept="image/png"
+          bind:this={skinInput}
+          onchange={(event) =>
+            selectSkinFile(event.currentTarget.files?.[0] ?? null)}
+        />
       </div>
     </div>
-
-    <fieldset class="mt-4">
-      <legend class="fieldset-label mb-2">Movement</legend>
-      <div class="grid grid-cols-2 gap-2">
-        <label
-          class:border-primary={puppetMovementMode === "free"}
-          class="card cursor-pointer overflow-hidden border border-base-300 bg-base-200"
+  </div>
+  <fieldset class="fieldset border border-base-300 bg-base-100 p-3 pt-1">
+    <legend class="fieldset-legend px-1">Puppets reposition</legend>
+    <div class="grid grid-cols-2 gap-2">
+      <label
+        class:border-primary={puppetMovementMode === "free"}
+        class="card cursor-pointer overflow-hidden border border-base-300 bg-base-200"
+      >
+        <img
+          src="/puppet-movement-free.svg"
+          alt="Puppets moving freely across the full viewport"
+          class="w-full object-cover bg-linear-to-b from-base-100 to-base-300"
+          class:from-primary-content={puppetMovementMode === "free"}
+        />
+        <span
+          class="card-body items-center gap-2 p-2 text-center"
+          class:bg-primary-content={puppetMovementMode === "free"}
+          class:text-primary={puppetMovementMode === "free"}
         >
-          <img
-            src="/puppet-movement-free.svg"
-            alt="Puppets moving freely across the full viewport"
-            class="w-full object-cover bg-linear-to-b from-base-100 to-base-300"
-            class:from-primary-content={puppetMovementMode === "free"}
+          <span class="text-xs font-medium">Freeroam around</span>
+          <input
+            class="hidden"
+            type="radio"
+            name="puppet-movement-mode"
+            value="free"
+            checked={puppetMovementMode === "free"}
+            onchange={() => {
+              puppetMovementMode = "free";
+              updateDirty();
+            }}
+            disabled={busy}
           />
-          <span
-            class="card-body items-center gap-2 p-2 text-center"
-            class:bg-primary-content={puppetMovementMode === "free"}
-            class:text-primary={puppetMovementMode === "free"}
-          >
-            <span class="text-xs font-medium">Freeroam around</span>
-            <input
-              class="hidden"
-              type="radio"
-              name="puppet-movement-mode"
-              value="free"
-              checked={puppetMovementMode === "free"}
-              onchange={() => {
-                puppetMovementMode = "free";
-                updateDirty();
-              }}
-              disabled={busy}
-            />
-          </span>
-        </label>
+        </span>
+      </label>
 
-        <label
-          class:border-primary={puppetMovementMode === "bottom"}
-          class:text-primary={puppetMovementMode === "bottom"}
-          class="card cursor-pointer overflow-hidden border border-base-300 bg-base-200"
+      <label
+        class:border-primary={puppetMovementMode === "bottom"}
+        class:text-primary={puppetMovementMode === "bottom"}
+        class="card cursor-pointer overflow-hidden border border-base-300 bg-base-200"
+      >
+        <img
+          src="/puppet-movement-bottom.svg"
+          alt="Puppets moving along the bottom of the viewport"
+          class="w-full object-cover bg-linear-to-b from-base-100 to-base-300"
+          class:from-primary-content={puppetMovementMode === "bottom"}
+        />
+        <span
+          class="card-body items-center gap-2 p-2 text-center"
+          class:bg-primary-content={puppetMovementMode === "bottom"}
         >
-          <img
-            src="/puppet-movement-bottom.svg"
-            alt="Puppets moving along the bottom of the viewport"
-            class="w-full object-cover bg-linear-to-b from-base-100 to-base-300"
-            class:from-primary-content={puppetMovementMode === "bottom"}
+          <span class="text-xs font-medium">Stay on the ground</span>
+          <input
+            class="hidden"
+            type="radio"
+            name="puppet-movement-mode"
+            value="bottom"
+            checked={puppetMovementMode === "bottom"}
+            onchange={() => {
+              puppetMovementMode = "bottom";
+              updateDirty();
+            }}
+            disabled={busy}
           />
-          <span
-            class="card-body items-center gap-2 p-2 text-center"
-            class:bg-primary-content={puppetMovementMode === "bottom"}
-          >
-            <span class="text-xs font-medium">Stay on the ground</span>
-            <input
-              class="hidden"
-              type="radio"
-              name="puppet-movement-mode"
-              value="bottom"
-              checked={puppetMovementMode === "bottom"}
-              onchange={() => {
-                puppetMovementMode = "bottom";
-                updateDirty();
-              }}
-              disabled={busy}
-            />
-          </span>
-        </label>
-      </div>
-    </fieldset>
+        </span>
+      </label>
+    </div>
   </fieldset>
 </div>
 

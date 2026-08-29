@@ -1,6 +1,5 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import ActivityPanel from "$lib/components/control-panel/activity-panel.svelte";
   import FriendsPanel from "$lib/components/control-panel/friends-panel.svelte";
   import GeneralPanel from "$lib/components/control-panel/general-panel.svelte";
   import NetworkPanel from "$lib/components/control-panel/network-panel.svelte";
@@ -11,22 +10,20 @@
   } from "$lib/components/control-panel/types";
 
   const tabs = [
-    { id: "general", label: "General" },
     { id: "scene", label: "Scene" },
+    { id: "general", label: "Account" },
     { id: "friends", label: "Friends" },
     { id: "network", label: "Network" },
-    { id: "activity", label: "Activity" },
   ] as const;
   type TabId = (typeof tabs)[number]["id"];
 
-  let activeTab = $state<TabId>("general");
+  let activeTab = $state<TabId>("scene");
   let actions: Partial<Record<TabId, PanelActions>> = {};
   let panelStates = $state<Record<TabId, PanelState>>({
     general: { dirty: false, busy: false },
     scene: { dirty: false, busy: false },
     friends: { dirty: false, busy: false },
     network: { dirty: false, busy: false },
-    activity: { dirty: false, busy: false },
   });
   let anyDirty = $derived(tabs.some((tab) => panelStates[tab.id].dirty));
   let anyBusy = $derived(tabs.some((tab) => panelStates[tab.id].busy));
@@ -87,7 +84,7 @@
         type="radio"
         name="control_panel_tabs"
         class="tab text-xs"
-        aria-label={`${tab.label}${panelStates[tab.id].dirty ? " *" : ""}`}
+        aria-label={tab.label}
         value={tab.id}
         bind:group={activeTab}
       />
@@ -106,7 +103,7 @@
           {:else if tab.id === "network"}
             <NetworkPanel {register} />
           {:else}
-            <ActivityPanel {register} />
+            <p>You're not supposed to see this 👀</p>
           {/if}
         </div>
       </div>
