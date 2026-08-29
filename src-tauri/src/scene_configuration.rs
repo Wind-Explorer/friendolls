@@ -1,7 +1,8 @@
 use crate::db::{self, AppDatabase};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri::{AppHandle, State};
+use std::sync::RwLock;
+use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
 const SCENE_CONFIGURATION_ID: i64 = 1;
@@ -10,11 +11,41 @@ const MAX_PUPPET_SCALE: f64 = 2.0;
 const MIN_PUPPET_OPACITY: f64 = 0.1;
 const MAX_PUPPET_OPACITY: f64 = 1.0;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Type, sqlx::Type)]
+#[serde(rename_all = "camelCase")]
+#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
+pub enum PuppetMovementMode {
+    #[default]
+    Free,
+    Bottom,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneConfiguration {
     pub puppet_scale: f64,
     pub puppet_opacity: f64,
+    pub puppet_movement_mode: PuppetMovementMode,
+}
+
+pub struct SceneConfigurationState(RwLock<SceneConfiguration>);
+
+impl SceneConfigurationState {
+    fn new(configuration: SceneConfiguration) -> Self {
+        Self(RwLock::new(configuration))
+    }
+
+    fn replace(&self, configuration: SceneConfiguration) -> Result<(), String> {
+        *self.0.write().map_err(|error| error.to_string())? = configuration;
+        Ok(())
+    }
+
+    pub(crate) fn puppet_movement_mode(&self) -> Result<PuppetMovementMode, String> {
+        self.0
+            .read()
+            .map(|configuration| configuration.puppet_movement_mode)
+            .map_err(|error| error.to_string())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
@@ -25,7 +56,7 @@ pub struct SceneConfigurationChanged {
 
 async fn get(database: &AppDatabase) -> Result<SceneConfiguration, sqlx::Error> {
     sqlx::query_as::<_, SceneConfiguration>(
-        "SELECT puppet_scale, puppet_opacity FROM scene_configuration WHERE id = ?1",
+        "SELECT puppet_scale, puppet_opacity, puppet_movement_mode FROM scene_configuration WHERE id = ?1",
     )
     .bind(SCENE_CONFIGURATION_ID)
     .fetch_one(database.pool())
@@ -52,16 +83,23 @@ async fn update(
     }
 
     sqlx::query(
-        "UPDATE scene_configuration SET puppet_scale = ?1, puppet_opacity = ?2 WHERE id = ?3",
+        "UPDATE scene_configuration SET puppet_scale = ?1, puppet_opacity = ?2, puppet_movement_mode = ?3 WHERE id = ?4",
     )
     .bind(configuration.puppet_scale)
     .bind(configuration.puppet_opacity)
+    .bind(configuration.puppet_movement_mode)
     .bind(SCENE_CONFIGURATION_ID)
     .execute(database.pool())
     .await
     .map_err(db::command_error)?;
 
     get(database).await.map_err(db::command_error)
+}
+
+pub async fn init(handle: &AppHandle) -> Result<(), sqlx::Error> {
+    let configuration = get(&handle.state::<AppDatabase>()).await?;
+    handle.manage(SceneConfigurationState::new(configuration));
+    Ok(())
 }
 
 fn emit_changed(handle: &AppHandle, configuration: SceneConfiguration) -> Result<(), String> {
@@ -75,8 +113,10 @@ fn emit_changed(handle: &AppHandle, configuration: SceneConfiguration) -> Result
 pub async fn get_scene_configuration(
     handle: AppHandle,
     database: State<'_, AppDatabase>,
+    state: State<'_, SceneConfigurationState>,
 ) -> Result<SceneConfiguration, String> {
     let configuration = get(&database).await.map_err(db::command_error)?;
+    state.replace(configuration.clone())?;
     emit_changed(&handle, configuration.clone())?;
     Ok(configuration)
 }
@@ -86,9 +126,11 @@ pub async fn get_scene_configuration(
 pub async fn update_scene_configuration(
     handle: AppHandle,
     database: State<'_, AppDatabase>,
+    state: State<'_, SceneConfigurationState>,
     configuration: SceneConfiguration,
 ) -> Result<SceneConfiguration, String> {
     let configuration = update(&database, configuration).await?;
+    state.replace(configuration.clone())?;
     emit_changed(&handle, configuration.clone())?;
     Ok(configuration)
 }
@@ -121,6 +163,7 @@ mod tests {
             SceneConfiguration {
                 puppet_scale: 1.0,
                 puppet_opacity: 1.0,
+                puppet_movement_mode: PuppetMovementMode::Free,
             }
         );
     }
@@ -134,12 +177,17 @@ mod tests {
             SceneConfiguration {
                 puppet_scale: 1.5,
                 puppet_opacity: 0.4,
+                puppet_movement_mode: PuppetMovementMode::Bottom,
             },
         )
         .await
         .expect("update scene configuration");
         assert_eq!(configuration.puppet_scale, 1.5);
         assert_eq!(configuration.puppet_opacity, 0.4);
+        assert_eq!(
+            configuration.puppet_movement_mode,
+            PuppetMovementMode::Bottom
+        );
         assert_eq!(get(&database).await.unwrap(), configuration);
 
         let error = update(
@@ -147,6 +195,7 @@ mod tests {
             SceneConfiguration {
                 puppet_scale: 2.1,
                 puppet_opacity: 0.4,
+                puppet_movement_mode: PuppetMovementMode::Bottom,
             },
         )
         .await
@@ -159,6 +208,7 @@ mod tests {
             SceneConfiguration {
                 puppet_scale: 1.5,
                 puppet_opacity: 0.05,
+                puppet_movement_mode: PuppetMovementMode::Bottom,
             },
         )
         .await

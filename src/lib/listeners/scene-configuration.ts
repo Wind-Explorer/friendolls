@@ -8,6 +8,7 @@ import {
 export const sceneConfiguration = writable<SceneConfiguration>({
   puppetScale: 1,
   puppetOpacity: 1,
+  puppetMovementMode: "free",
 });
 export const sceneConfigurationListenerError = writable("");
 

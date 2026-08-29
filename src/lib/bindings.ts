@@ -144,12 +144,13 @@ export type FriendsChanged = { friends: Friend[] }
 export type InteractionContent = { type: "text"; text: string } | { type: "wave" } | { type: "image"; mediaType: string; data: string }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
 export type ProfileChanged = { profile: User }
+export type PuppetMovementMode = "free" | "bottom"
 export type PuppetState = { id: string; position: CursorPosition; isMoving: boolean }
 export type PuppetStatesChanged = { puppets: PuppetState[] }
 export type Remote = { id: string; address: string; name: string | null; port: number | null }
 export type RemoteInput = { address: string; name: string | null; port: number | null }
 export type RemotesChanged = { remotes: Remote[] }
-export type SceneConfiguration = { puppetScale: number; puppetOpacity: number }
+export type SceneConfiguration = { puppetScale: number; puppetOpacity: number; puppetMovementMode: PuppetMovementMode }
 export type SceneConfigurationChanged = { configuration: SceneConfiguration }
 export type SceneHitbox = { x: number; y: number; width: number; height: number }
 /**

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { commands } from "$lib/bindings";
+  import { commands, type PuppetMovementMode } from "$lib/bindings";
   import {
     sceneConfiguration,
     sceneConfigurationListenerError,
@@ -12,6 +12,7 @@
 
   let puppetScale = $state(1);
   let puppetOpacity = $state(1);
+  let puppetMovementMode = $state<PuppetMovementMode>("free");
   let dirty = $state(false);
   let busy = $state(false);
   let error = $state("");
@@ -20,6 +21,7 @@
     if (!dirty) {
       puppetScale = $sceneConfiguration.puppetScale;
       puppetOpacity = $sceneConfiguration.puppetOpacity;
+      puppetMovementMode = $sceneConfiguration.puppetMovementMode;
     }
     register("scene", { apply, reset }, { dirty, busy });
   });
@@ -29,13 +31,15 @@
   function updateDirty() {
     dirty =
       puppetScale !== $sceneConfiguration.puppetScale ||
-      puppetOpacity !== $sceneConfiguration.puppetOpacity;
+      puppetOpacity !== $sceneConfiguration.puppetOpacity ||
+      puppetMovementMode !== $sceneConfiguration.puppetMovementMode;
     error = "";
   }
 
   function reset() {
     puppetScale = $sceneConfiguration.puppetScale;
     puppetOpacity = $sceneConfiguration.puppetOpacity;
+    puppetMovementMode = $sceneConfiguration.puppetMovementMode;
     dirty = false;
     error = "";
   }
@@ -49,9 +53,11 @@
       const configuration = await commands.updateSceneConfiguration({
         puppetScale,
         puppetOpacity,
+        puppetMovementMode,
       });
       puppetScale = configuration.puppetScale;
       puppetOpacity = configuration.puppetOpacity;
+      puppetMovementMode = configuration.puppetMovementMode;
       dirty = false;
       return true;
     } catch (cause) {
@@ -110,5 +116,72 @@
       disabled={busy}
       aria-describedby="puppet-opacity-help"
     />
+
+    <fieldset class="mt-4">
+      <legend class="fieldset-label mb-2">Movement</legend>
+      <div class="grid grid-cols-2 gap-2">
+        <label
+          class:border-primary={puppetMovementMode === "free"}
+          class="card cursor-pointer overflow-hidden border border-base-300 bg-base-200"
+        >
+          <img
+            src="/puppet-movement-free.svg"
+            alt="Puppets moving freely across the full viewport"
+            class="w-full object-cover bg-linear-to-b from-base-100 to-base-300"
+            class:from-primary-content={puppetMovementMode === "free"}
+          />
+          <span
+            class="card-body items-center gap-2 p-2 text-center"
+            class:bg-primary-content={puppetMovementMode === "free"}
+            class:text-primary={puppetMovementMode === "free"}
+          >
+            <span class="text-xs font-medium">Freeroam around</span>
+            <input
+              class="hidden"
+              type="radio"
+              name="puppet-movement-mode"
+              value="free"
+              checked={puppetMovementMode === "free"}
+              onchange={() => {
+                puppetMovementMode = "free";
+                updateDirty();
+              }}
+              disabled={busy}
+            />
+          </span>
+        </label>
+
+        <label
+          class:border-primary={puppetMovementMode === "bottom"}
+          class:text-primary={puppetMovementMode === "bottom"}
+          class="card cursor-pointer overflow-hidden border border-base-300 bg-base-200"
+        >
+          <img
+            src="/puppet-movement-bottom.svg"
+            alt="Puppets moving along the bottom of the viewport"
+            class="w-full object-cover bg-linear-to-b from-base-100 to-base-300"
+            class:from-primary-content={puppetMovementMode === "bottom"}
+          />
+          <span
+            class="card-body items-center gap-2 p-2 text-center"
+            class:bg-primary-content={puppetMovementMode === "bottom"}
+          >
+            <span class="text-xs font-medium">Stay on the ground</span>
+            <input
+              class="hidden"
+              type="radio"
+              name="puppet-movement-mode"
+              value="bottom"
+              checked={puppetMovementMode === "bottom"}
+              onchange={() => {
+                puppetMovementMode = "bottom";
+                updateDirty();
+              }}
+              disabled={busy}
+            />
+          </span>
+        </label>
+      </div>
+    </fieldset>
   </fieldset>
 </div>

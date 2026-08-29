@@ -20,6 +20,7 @@ use tauri::Manager;
 async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle();
     db::init(handle).await?;
+    scene_configuration::init(handle).await?;
     keypair::init(handle).await?;
     app.manage(interactions::InteractionState::default());
     network::init(handle).await?;

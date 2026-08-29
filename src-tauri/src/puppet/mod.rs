@@ -11,10 +11,12 @@ use tauri_specta::Event;
 use tokio::time::MissedTickBehavior;
 
 use crate::cursor::{CursorPosition, CursorPositions, CursorState};
+use crate::scene_configuration::{PuppetMovementMode, SceneConfigurationState};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(125);
 const SPEED_LOGICAL_PIXELS_PER_SECOND: f64 = 80.0;
 const FOLLOW_RADIUS_LOGICAL_PIXELS: f64 = 48.0;
+const BOTTOM_MOVEMENT_Y: f64 = 1.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Type)]
 #[serde(rename_all = "camelCase")]
@@ -39,9 +41,16 @@ impl PuppetStateStore {
         cursor_positions: &HashMap<String, CursorPositions>,
         viewport: Viewport,
         elapsed: Duration,
+        movement_mode: PuppetMovementMode,
     ) -> Result<Option<Vec<PuppetState>>, String> {
         let mut puppets = self.0.write().map_err(|error| error.to_string())?;
-        let changed = advance_puppets(&mut puppets, cursor_positions, viewport, elapsed);
+        let changed = advance_puppets(
+            &mut puppets,
+            cursor_positions,
+            viewport,
+            elapsed,
+            movement_mode,
+        );
         Ok(changed.then(|| sorted_snapshot(&puppets)))
     }
 
@@ -95,10 +104,21 @@ pub fn init(handle: &AppHandle) -> Result<(), String> {
                     continue;
                 }
             };
+            let movement_mode = match handle
+                .state::<SceneConfigurationState>()
+                .puppet_movement_mode()
+            {
+                Ok(mode) => mode,
+                Err(error) => {
+                    eprintln!("failed to read Puppet movement mode: {error}");
+                    continue;
+                }
+            };
             let puppets = match handle.state::<PuppetStateStore>().update(
                 &cursor_positions,
                 viewport,
                 elapsed,
+                movement_mode,
             ) {
                 Ok(Some(puppets)) => puppets,
                 Ok(None) => continue,
@@ -128,18 +148,20 @@ fn advance_puppets(
     cursor_positions: &HashMap<String, CursorPositions>,
     viewport: Viewport,
     elapsed: Duration,
+    movement_mode: PuppetMovementMode,
 ) -> bool {
     let previous_len = puppets.len();
     puppets.retain(|id, _| cursor_positions.contains_key(id));
     let mut changed = puppets.len() != previous_len;
 
     for (id, cursor) in cursor_positions {
+        let target = movement_target(&cursor.mapped, movement_mode);
         let Some(puppet) = puppets.get_mut(id) else {
             puppets.insert(
                 id.clone(),
                 PuppetState {
                     id: id.clone(),
-                    position: cursor.mapped.clone(),
+                    position: target,
                     is_moving: false,
                 },
             );
@@ -147,10 +169,24 @@ fn advance_puppets(
             continue;
         };
 
-        changed |= advance_puppet(puppet, &cursor.mapped, viewport, elapsed.as_secs_f64());
+        if movement_mode == PuppetMovementMode::Bottom && puppet.position.y != BOTTOM_MOVEMENT_Y {
+            puppet.position.y = BOTTOM_MOVEMENT_Y;
+            changed = true;
+        }
+        changed |= advance_puppet(puppet, &target, viewport, elapsed.as_secs_f64());
     }
 
     changed
+}
+
+fn movement_target(cursor: &CursorPosition, mode: PuppetMovementMode) -> CursorPosition {
+    CursorPosition {
+        x: cursor.x,
+        y: match mode {
+            PuppetMovementMode::Free => cursor.y,
+            PuppetMovementMode::Bottom => BOTTOM_MOVEMENT_Y,
+        },
+    }
 }
 
 fn advance_puppet(
@@ -220,6 +256,7 @@ mod tests {
             &cursors(&[("friend", 0.75, 0.25)]),
             viewport(),
             TICK_INTERVAL,
+            PuppetMovementMode::Free,
         );
 
         assert!(changed);
@@ -296,8 +333,44 @@ mod tests {
             &HashMap::new(),
             viewport(),
             TICK_INTERVAL,
+            PuppetMovementMode::Free,
         ));
         assert!(puppets.is_empty());
+    }
+
+    #[test]
+    fn bottom_mode_preserves_horizontal_target_and_insets_vertical_target() {
+        let cursor = CursorPosition { x: 0.25, y: 0.1 };
+
+        assert_eq!(
+            movement_target(&cursor, PuppetMovementMode::Bottom),
+            CursorPosition {
+                x: 0.25,
+                y: BOTTOM_MOVEMENT_Y,
+            }
+        );
+        assert_eq!(movement_target(&cursor, PuppetMovementMode::Free), cursor);
+    }
+
+    #[test]
+    fn bottom_mode_emits_a_fixed_inset_y_for_existing_puppets() {
+        let mut puppets = HashMap::from([(
+            "friend".to_owned(),
+            PuppetState {
+                id: "friend".to_owned(),
+                position: CursorPosition { x: 0.25, y: 0.1 },
+                is_moving: false,
+            },
+        )]);
+
+        assert!(advance_puppets(
+            &mut puppets,
+            &cursors(&[("friend", 0.25, 0.1)]),
+            viewport(),
+            TICK_INTERVAL,
+            PuppetMovementMode::Bottom,
+        ));
+        assert_eq!(puppets["friend"].position.y, BOTTOM_MOVEMENT_Y);
     }
 
     #[test]
