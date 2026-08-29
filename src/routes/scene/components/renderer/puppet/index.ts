@@ -81,43 +81,50 @@ export class Puppet {
   private createRig(): PuppetRig {
     const root = new THREE.Group();
     const material = new THREE.MeshStandardMaterial();
+    const scale = 1;
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(16, 24, 8), material);
-    body.position.y = 36;
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(16 * scale, 24 * scale, 8 * scale),
+      material,
+    );
+    body.position.y = 36 * scale;
 
-    const head = new THREE.Mesh(new THREE.BoxGeometry(16, 16, 16), material);
-    head.position.y = 56;
+    const head = new THREE.Mesh(
+      new THREE.BoxGeometry(16 * scale, 16 * scale, 16 * scale),
+      material,
+    );
+    head.position.y = 56 * scale;
 
     const { pivot: leftArm, mesh: leftArmMesh } = this.createLimbPivot(
-      -12,
-      48,
-      8,
-      24,
-      8,
+      -12 * scale,
+      48 * scale,
+      8 * scale,
+      24 * scale,
+      8 * scale,
       material,
     );
     const { pivot: rightArm, mesh: rightArmMesh } = this.createLimbPivot(
-      12,
-      48,
-      8,
-      24,
-      8,
+      12 * scale,
+      48 * scale,
+      8 * scale,
+      24 * scale,
+      8 * scale,
       material,
     );
     const { pivot: leftLeg, mesh: leftLegMesh } = this.createLimbPivot(
-      -4,
-      24,
-      8,
-      24,
-      8,
+      -4 * scale,
+      24 * scale,
+      8 * scale,
+      24 * scale,
+      8 * scale,
       material,
     );
     const { pivot: rightLeg, mesh: rightLegMesh } = this.createLimbPivot(
-      4,
-      24,
-      8,
-      24,
-      8,
+      4 * scale,
+      24 * scale,
+      8 * scale,
+      24 * scale,
+      8 * scale,
       material,
     );
 
