@@ -15,6 +15,8 @@
   }
 </script>
 
-<div class="w-screen h-screen max-w-[100vw] max-h-screen *:size-full">
+<div
+  class="w-screen h-screen max-w-[100vw] max-h-screen *:size-full font-custom"
+>
   {@render children?.()}
 </div>
