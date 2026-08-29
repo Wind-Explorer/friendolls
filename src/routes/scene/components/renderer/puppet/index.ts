@@ -4,6 +4,8 @@ import type { World } from "../world";
 import { PuppetAnimation } from "./animation";
 import { PuppetSkin } from "./skin";
 
+const CAMERA_FACING_ROTATION_Y = Math.PI / 4;
+
 export type PuppetRig = {
   root: THREE.Group;
   body: THREE.Mesh<THREE.BoxGeometry, THREE.Material | THREE.Material[]>;
@@ -89,6 +91,7 @@ export class Puppet {
 
   private createRig(): PuppetRig {
     const root = new THREE.Group();
+    root.rotation.y = CAMERA_FACING_ROTATION_Y;
     const material = new THREE.MeshStandardMaterial();
 
     const body = new THREE.Mesh(
