@@ -54,8 +54,10 @@ export class Puppet {
     deltaSeconds: number,
     elapsedSeconds: number,
     skinHash: string | null,
+    opacity: number,
   ) {
     this.skin.update(skinHash);
+    this.skin.setOpacity(opacity);
     if (frozen) {
       this.animation.pause();
       return;
@@ -77,11 +79,12 @@ export class Puppet {
   dispose() {
     this.skin.dispose();
 
+    const geometries = new Set<THREE.BufferGeometry>();
     this.root.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return;
-
-      object.geometry.dispose();
+      geometries.add(object.geometry);
     });
+    for (const geometry of geometries) geometry.dispose();
   }
 
   private createRig(): PuppetRig {

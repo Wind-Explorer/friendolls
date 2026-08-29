@@ -149,7 +149,7 @@ export type PuppetStatesChanged = { puppets: PuppetState[] }
 export type Remote = { id: string; address: string; name: string | null; port: number | null }
 export type RemoteInput = { address: string; name: string | null; port: number | null }
 export type RemotesChanged = { remotes: Remote[] }
-export type SceneConfiguration = { puppetScale: number }
+export type SceneConfiguration = { puppetScale: number; puppetOpacity: number }
 export type SceneConfigurationChanged = { configuration: SceneConfiguration }
 export type SceneHitbox = { x: number; y: number; width: number; height: number }
 /**

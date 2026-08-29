@@ -9,12 +9,12 @@
 
   let {
     puppets,
-    frozenPuppetId,
+    selectedPuppetId,
     onBoundsChange,
     skinHashes,
   }: {
     puppets: readonly PuppetState[];
-    frozenPuppetId: string | null;
+    selectedPuppetId: string | null;
     onBoundsChange: (bounds: PuppetScreenBounds[]) => void;
     skinHashes: ReadonlyMap<string, string | null>;
   } = $props();
@@ -38,7 +38,8 @@
     puppetManager.update(
       puppets,
       $sceneConfiguration.puppetScale,
-      frozenPuppetId,
+      $sceneConfiguration.puppetOpacity,
+      selectedPuppetId,
       clock.getDelta(),
       clock.getElapsed(),
       skinHashes,

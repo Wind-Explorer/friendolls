@@ -11,7 +11,8 @@ export class PuppetManager {
   update(
     states: readonly PuppetState[],
     scale: number,
-    frozenPuppetId: string | null,
+    idleOpacity: number,
+    selectedPuppetId: string | null,
     deltaSeconds: number,
     elapsedSeconds: number,
     skinHashes: ReadonlyMap<string, string | null>,
@@ -24,10 +25,11 @@ export class PuppetManager {
         ?.update(
           state,
           this.world,
-          state.id === frozenPuppetId,
+          state.id === selectedPuppetId,
           deltaSeconds,
           elapsedSeconds,
           skinHashes.get(state.id) ?? null,
+          state.id === selectedPuppetId ? 1 : idleOpacity,
         );
     }
   }

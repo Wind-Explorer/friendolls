@@ -7,6 +7,7 @@
   import { liveMetadata } from "$lib/listeners/live-metadata";
   import { profile } from "$lib/listeners/profile";
   import { puppetStates } from "$lib/listeners/puppets";
+  import { sceneConfiguration } from "$lib/listeners/scene-configuration";
   import Renderer from "./components/renderer.svelte";
   import type { PuppetScreenBounds } from "./components/renderer/types";
   import { startHitboxSync } from "./hitboxes";
@@ -102,7 +103,7 @@
 <div class="relative size-full">
   <Renderer
     puppets={visiblePuppets}
-    frozenPuppetId={selectedUserId}
+    selectedPuppetId={selectedUserId}
     onBoundsChange={(bounds) => (puppetBounds = bounds)}
     {skinHashes}
   />
@@ -140,6 +141,7 @@
               src={`data:image/png;base64,${foregroundApp.ico}`}
               alt=""
               class="pointer-events-none absolute -top-5 left-1/2 size-4 -translate-x-1/2 object-contain"
+              style:opacity={$sceneConfiguration.puppetOpacity}
             />
           {/if}
 

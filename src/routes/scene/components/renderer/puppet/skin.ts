@@ -118,6 +118,7 @@ function loadTexture(url: string) {
 
 export class PuppetSkin {
   private readonly material: THREE.MeshStandardMaterial;
+  private readonly depthMaterial: THREE.MeshBasicMaterial;
   private texture: THREE.Texture | null = null;
   private requestedHash: string | null | undefined;
   private requestId = 0;
@@ -129,6 +130,14 @@ export class PuppetSkin {
     this.material = new THREE.MeshStandardMaterial({
       color: "white",
       transparent: true,
+      alphaTest: 0.5,
+      depthWrite: false,
+      depthFunc: THREE.EqualDepth,
+    });
+    this.depthMaterial = new THREE.MeshBasicMaterial({
+      colorWrite: false,
+      depthWrite: true,
+      depthTest: true,
       alphaTest: 0.5,
     });
     const parts: SkinPart[] = [
@@ -142,6 +151,11 @@ export class PuppetSkin {
     for (const part of parts) {
       part.mesh.material = this.material;
       applyUvs(part.mesh.geometry, part.faces);
+
+      // Opaque-phase depth establishes the nearest rig surface before the
+      // translucent parent mesh contributes color.
+      const depthMesh = new THREE.Mesh(part.mesh.geometry, this.depthMaterial);
+      part.mesh.add(depthMesh);
     }
   }
 
@@ -161,16 +175,25 @@ export class PuppetSkin {
         this.texture?.dispose();
         this.texture = texture;
         this.material.map = texture;
+        this.depthMaterial.map = texture;
         this.material.needsUpdate = true;
+        this.depthMaterial.needsUpdate = true;
       })
       .catch((error) =>
         console.error(`Failed to load skin for ${this.userId}`, error),
       );
   }
 
+  setOpacity(opacity: number) {
+    if (this.material.opacity === opacity) return;
+    this.material.opacity = opacity;
+    this.material.alphaTest = opacity * 0.5;
+  }
+
   dispose() {
     this.requestId++;
     this.texture?.dispose();
     this.material.dispose();
+    this.depthMaterial.dispose();
   }
 }

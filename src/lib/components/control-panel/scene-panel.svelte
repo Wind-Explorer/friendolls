@@ -11,24 +11,31 @@
   let { register }: { register: RegisterPanel } = $props();
 
   let puppetScale = $state(1);
+  let puppetOpacity = $state(1);
   let dirty = $state(false);
   let busy = $state(false);
   let error = $state("");
 
   $effect(() => {
-    if (!dirty) puppetScale = $sceneConfiguration.puppetScale;
+    if (!dirty) {
+      puppetScale = $sceneConfiguration.puppetScale;
+      puppetOpacity = $sceneConfiguration.puppetOpacity;
+    }
     register("scene", { apply, reset }, { dirty, busy });
   });
 
   onMount(() => register("scene", { apply, reset }, { dirty, busy }));
 
   function updateDirty() {
-    dirty = puppetScale !== $sceneConfiguration.puppetScale;
+    dirty =
+      puppetScale !== $sceneConfiguration.puppetScale ||
+      puppetOpacity !== $sceneConfiguration.puppetOpacity;
     error = "";
   }
 
   function reset() {
     puppetScale = $sceneConfiguration.puppetScale;
+    puppetOpacity = $sceneConfiguration.puppetOpacity;
     dirty = false;
     error = "";
   }
@@ -41,8 +48,10 @@
     try {
       const configuration = await commands.updateSceneConfiguration({
         puppetScale,
+        puppetOpacity,
       });
       puppetScale = configuration.puppetScale;
+      puppetOpacity = configuration.puppetOpacity;
       dirty = false;
       return true;
     } catch (cause) {
@@ -81,6 +90,25 @@
       oninput={updateDirty}
       disabled={busy}
       aria-describedby="puppet-scale-help"
+    />
+
+    <div class="mt-3 flex items-center justify-between gap-3">
+      <label class="fieldset-label" for="puppet-opacity">Opacity</label>
+      <output class="badge badge-outline tabular-nums" for="puppet-opacity">
+        {Math.round(puppetOpacity * 100)}%
+      </output>
+    </div>
+    <input
+      id="puppet-opacity"
+      class="range range-sm"
+      type="range"
+      min="0.25"
+      max="1"
+      step="0.05"
+      bind:value={puppetOpacity}
+      oninput={updateDirty}
+      disabled={busy}
+      aria-describedby="puppet-opacity-help"
     />
   </fieldset>
 </div>
