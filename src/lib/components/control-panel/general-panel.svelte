@@ -12,8 +12,6 @@
   let dirty = $state(false);
   let busy = $state(false);
   let error = $state("");
-  let skinFile = $state<File | null>(null);
-  let skinInput = $state<HTMLInputElement | null>(null);
 
   $effect(() => {
     if (!dirty) displayName = $profile?.displayName ?? "";
@@ -23,15 +21,12 @@
   onMount(() => register("general", { apply, reset }, { dirty, busy }));
 
   function updateDirty() {
-    dirty =
-      displayName.trim() !== ($profile?.displayName ?? "") || skinFile !== null;
+    dirty = displayName.trim() !== ($profile?.displayName ?? "");
     error = "";
   }
 
   function reset() {
     displayName = $profile?.displayName ?? "";
-    skinFile = null;
-    if (skinInput) skinInput.value = "";
     dirty = false;
     error = "";
   }
@@ -47,13 +42,8 @@
     busy = true;
     error = "";
     try {
-      const skinData = skinFile
-        ? Array.from(new Uint8Array(await skinFile.arrayBuffer()))
-        : null;
-      await commands.updateProfile(nextName, skinData);
+      await commands.updateProfile(nextName, null);
       displayName = nextName;
-      skinFile = null;
-      if (skinInput) skinInput.value = "";
       dirty = false;
       return true;
     } catch (cause) {
@@ -87,34 +77,6 @@
     <p id="display-name-help" class="fieldset-label">
       This name can be changed at any time.
     </p>
-
-    <label class="fieldset-label mt-2" for="skin-file">Character skin</label>
-    <div class="join w-full">
-      <input
-        class="input join-item min-w-0 flex-1"
-        value={skinFile?.name ?? ($profile?.skinHash ? "Custom skin" : "Default skin")}
-        readonly
-        aria-label="Selected character skin"
-      />
-      <button
-        class="btn join-item"
-        type="button"
-        disabled={!$profile || busy}
-        onclick={() => skinInput?.click()}>Choose PNG</button
-      >
-    </div>
-    <input
-      id="skin-file"
-      class="hidden"
-      type="file"
-      accept="image/png"
-      bind:this={skinInput}
-      onchange={(event) => {
-        skinFile = event.currentTarget.files?.[0] ?? null;
-        updateDirty();
-      }}
-    />
-    <p class="fieldset-label">64×64 Minecraft-format PNG, base layer only.</p>
 
     <label class="fieldset-label mt-2" for="public-key"
       >Identification Key

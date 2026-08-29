@@ -1,6 +1,6 @@
 import { resolveSkinSource } from "$lib/skins";
 import * as THREE from "three";
-import type { PuppetRig } from ".";
+import type { PuppetRig } from "./visual";
 
 type Region = {
   x: number;
@@ -120,7 +120,7 @@ export class PuppetSkin {
   private readonly material: THREE.MeshStandardMaterial;
   private readonly depthMaterial: THREE.MeshBasicMaterial;
   private texture: THREE.Texture | null = null;
-  private requestedHash: string | null | undefined;
+  private requestedSkinKey: string | undefined;
   private requestId = 0;
 
   constructor(
@@ -160,11 +160,21 @@ export class PuppetSkin {
   }
 
   update(skinHash: string | null) {
-    if (skinHash === this.requestedHash) return;
-    this.requestedHash = skinHash;
+    this.updateTexture(`hash:${skinHash ?? "default"}`, () =>
+      resolveSkinSource(this.userId, skinHash),
+    );
+  }
+
+  updateSource(source: string) {
+    this.updateTexture(`source:${source}`, () => Promise.resolve(source));
+  }
+
+  private updateTexture(key: string, resolveSource: () => Promise<string>) {
+    if (key === this.requestedSkinKey) return;
+    this.requestedSkinKey = key;
     const requestId = ++this.requestId;
 
-    resolveSkinSource(this.userId, skinHash)
+    resolveSource()
       .then(async (source) => {
         if (requestId !== this.requestId) return;
         const texture = await loadTexture(source);

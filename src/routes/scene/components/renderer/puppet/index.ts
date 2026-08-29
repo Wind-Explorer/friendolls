@@ -1,52 +1,26 @@
 import type { PuppetState } from "$lib/bindings";
 import * as THREE from "three";
 import type { World } from "../world";
-import { PuppetAnimation } from "./animation";
-import { PuppetSkin } from "./skin";
-
-const CAMERA_FACING_ROTATION_Y = Math.PI / 4;
-
-export type PuppetRig = {
-  root: THREE.Group;
-  body: THREE.Mesh<THREE.BoxGeometry, THREE.Material | THREE.Material[]>;
-  head: THREE.Mesh<THREE.BoxGeometry, THREE.Material | THREE.Material[]>;
-  leftArm: THREE.Group;
-  leftArmMesh: THREE.Mesh<THREE.BoxGeometry, THREE.Material | THREE.Material[]>;
-  rightArm: THREE.Group;
-  rightArmMesh: THREE.Mesh<
-    THREE.BoxGeometry,
-    THREE.Material | THREE.Material[]
-  >;
-  leftLeg: THREE.Group;
-  leftLegMesh: THREE.Mesh<THREE.BoxGeometry, THREE.Material | THREE.Material[]>;
-  rightLeg: THREE.Group;
-  rightLegMesh: THREE.Mesh<
-    THREE.BoxGeometry,
-    THREE.Material | THREE.Material[]
-  >;
-};
+import { PuppetVisual } from "./visual";
 
 export class Puppet {
   readonly root: THREE.Group;
 
-  private readonly rig: PuppetRig;
-  private readonly animation: PuppetAnimation;
-  private readonly skin: PuppetSkin;
+  private readonly visual: PuppetVisual;
   private readonly targetGroundPosition = new THREE.Vector3();
 
-  constructor(readonly id: string, scale: number) {
-    this.rig = this.createRig();
-    this.root = this.rig.root;
-    this.animation = new PuppetAnimation(this.rig);
-    const placeholderMaterial = this.rig.body.material;
-    this.skin = new PuppetSkin(id, this.rig);
-    this.setScale(scale);
-    if (!Array.isArray(placeholderMaterial)) placeholderMaterial.dispose();
+  constructor(
+    readonly id: string,
+    scale: number,
+  ) {
+    this.visual = new PuppetVisual(id);
+    this.root = this.visual.root;
+    this.visual.setScale(scale);
+    this.visual.setOpacity(1);
   }
 
   setScale(scale: number) {
-    if (this.root.scale.x === scale) return;
-    this.root.scale.setScalar(scale);
+    this.visual.setScale(scale);
   }
 
   update(
@@ -58,10 +32,10 @@ export class Puppet {
     skinHash: string | null,
     opacity: number,
   ) {
-    this.skin.update(skinHash);
-    this.skin.setOpacity(opacity);
+    this.visual.setSkin(skinHash);
+    this.visual.setOpacity(opacity);
     if (frozen) {
-      this.animation.pause();
+      this.visual.pause();
       return;
     }
 
@@ -70,7 +44,7 @@ export class Puppet {
       state.position.y,
       this.targetGroundPosition,
     );
-    this.animation.update(
+    this.visual.updateMotion(
       this.targetGroundPosition,
       state.isMoving,
       deltaSeconds,
@@ -79,101 +53,6 @@ export class Puppet {
   }
 
   dispose() {
-    this.skin.dispose();
-
-    const geometries = new Set<THREE.BufferGeometry>();
-    this.root.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return;
-      geometries.add(object.geometry);
-    });
-    for (const geometry of geometries) geometry.dispose();
-  }
-
-  private createRig(): PuppetRig {
-    const root = new THREE.Group();
-    root.rotation.y = CAMERA_FACING_ROTATION_Y;
-    const material = new THREE.MeshStandardMaterial();
-
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(16, 24, 8),
-      material,
-    );
-    body.position.y = 36;
-
-    const head = new THREE.Mesh(
-      new THREE.BoxGeometry(16, 16, 16),
-      material,
-    );
-    head.position.y = 56;
-
-    const { pivot: leftArm, mesh: leftArmMesh } = this.createLimbPivot(
-      -12,
-      48,
-      8,
-      24,
-      8,
-      material,
-    );
-    const { pivot: rightArm, mesh: rightArmMesh } = this.createLimbPivot(
-      12,
-      48,
-      8,
-      24,
-      8,
-      material,
-    );
-    const { pivot: leftLeg, mesh: leftLegMesh } = this.createLimbPivot(
-      -4,
-      24,
-      8,
-      24,
-      8,
-      material,
-    );
-    const { pivot: rightLeg, mesh: rightLegMesh } = this.createLimbPivot(
-      4,
-      24,
-      8,
-      24,
-      8,
-      material,
-    );
-
-    root.add(body, head, leftArm, rightArm, leftLeg, rightLeg);
-
-    return {
-      root,
-      body,
-      head,
-      leftArm,
-      leftArmMesh,
-      rightArm,
-      rightArmMesh,
-      leftLeg,
-      leftLegMesh,
-      rightLeg,
-      rightLegMesh,
-    };
-  }
-
-  private createLimbPivot(
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    depth: number,
-    material: THREE.Material,
-  ) {
-    const pivot = new THREE.Group();
-    pivot.position.set(x, y, 0);
-
-    const limb = new THREE.Mesh(
-      new THREE.BoxGeometry(width, height, depth),
-      material,
-    );
-    limb.position.y = -height / 2;
-    pivot.add(limb);
-
-    return { pivot, mesh: limb };
+    this.visual.dispose();
   }
 }

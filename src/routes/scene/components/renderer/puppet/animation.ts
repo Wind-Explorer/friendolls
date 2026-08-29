@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { PuppetRig } from ".";
+import type { PuppetRig } from "./visual";
 
 const MIN_IDLE_FACING_OFFSET_DEGREES = 3;
 const MAX_IDLE_FACING_OFFSET_DEGREES = 5;
@@ -65,6 +65,10 @@ export class PuppetAnimation {
     this.rig.rightLeg.rotation.x *= 0.8;
     this.rig.leftArm.rotation.x *= 0.8;
     this.rig.rightArm.rotation.x *= 0.8;
+  }
+
+  walk(elapsedSeconds: number) {
+    this.animateWalkCycle(elapsedSeconds);
   }
 
   private updateIdleTarget(isMoving: boolean) {
