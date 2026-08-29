@@ -65,6 +65,12 @@ async sendInteraction(recipientId: string, content: InteractionContent) : Promis
 async listPuppetStates() : Promise<PuppetState[]> {
     return await TAURI_INVOKE("list_puppet_states");
 },
+async getSceneConfiguration() : Promise<SceneConfiguration> {
+    return await TAURI_INVOKE("get_scene_configuration");
+},
+async updateSceneConfiguration(configuration: SceneConfiguration) : Promise<SceneConfiguration> {
+    return await TAURI_INVOKE("update_scene_configuration", { configuration });
+},
 async openActionWindow(name: string, title: string, pageUrl: string) : Promise<null> {
     return await TAURI_INVOKE("open_action_window", { name, title, pageUrl });
 },
@@ -86,7 +92,8 @@ friendsChanged: FriendsChanged,
 networkStatusChanged: NetworkStatusChanged,
 profileChanged: ProfileChanged,
 puppetStatesChanged: PuppetStatesChanged,
-remotesChanged: RemotesChanged
+remotesChanged: RemotesChanged,
+sceneConfigurationChanged: SceneConfigurationChanged
 }>({
 cursorPositionChanged: "cursor-position-changed",
 foregroundAppChanged: "foreground-app-changed",
@@ -97,7 +104,8 @@ friendsChanged: "friends-changed",
 networkStatusChanged: "network-status-changed",
 profileChanged: "profile-changed",
 puppetStatesChanged: "puppet-states-changed",
-remotesChanged: "remotes-changed"
+remotesChanged: "remotes-changed",
+sceneConfigurationChanged: "scene-configuration-changed"
 })
 
 /** user-defined constants **/
@@ -141,6 +149,8 @@ export type PuppetStatesChanged = { puppets: PuppetState[] }
 export type Remote = { id: string; address: string; name: string | null; port: number | null }
 export type RemoteInput = { address: string; name: string | null; port: number | null }
 export type RemotesChanged = { remotes: Remote[] }
+export type SceneConfiguration = { puppetScale: number }
+export type SceneConfigurationChanged = { configuration: SceneConfiguration }
 export type SceneHitbox = { x: number; y: number; width: number; height: number }
 /**
  * Public user identity exchanged with peers and remote servers. `id` is the

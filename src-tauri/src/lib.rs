@@ -9,6 +9,7 @@ mod network;
 mod profile;
 mod puppet;
 mod remotes;
+mod scene_configuration;
 mod skins;
 mod ufa;
 mod ui;
@@ -82,6 +83,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             images::send_image_bytes,
             interactions::send_interaction,
             puppet::list_puppet_states,
+            scene_configuration::get_scene_configuration,
+            scene_configuration::update_scene_configuration,
             ui::control_panel::open_action_window,
             ui::scene::update_scene_hitboxes,
         ])
@@ -96,6 +99,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             ufa::FriendForegroundAppChanged,
             interactions::FriendInteractionReceived,
             puppet::PuppetStatesChanged,
+            scene_configuration::SceneConfigurationChanged,
         ])
 }
 

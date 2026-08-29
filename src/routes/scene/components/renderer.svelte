@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PuppetState } from "$lib/bindings";
+  import { sceneConfiguration } from "$lib/listeners/scene-configuration";
   import { onDestroy, onMount } from "svelte";
   import * as THREE from "three";
   import { PuppetManager } from "./renderer/puppet/manager";
@@ -36,6 +37,7 @@
     clock.update();
     puppetManager.update(
       puppets,
+      $sceneConfiguration.puppetScale,
       frozenPuppetId,
       clock.getDelta(),
       clock.getElapsed(),

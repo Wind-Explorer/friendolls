@@ -4,6 +4,7 @@
   import FriendsPanel from "$lib/components/control-panel/friends-panel.svelte";
   import GeneralPanel from "$lib/components/control-panel/general-panel.svelte";
   import NetworkPanel from "$lib/components/control-panel/network-panel.svelte";
+  import ScenePanel from "$lib/components/control-panel/scene-panel.svelte";
   import type {
     PanelActions,
     PanelState,
@@ -11,6 +12,7 @@
 
   const tabs = [
     { id: "general", label: "General" },
+    { id: "scene", label: "Scene" },
     { id: "friends", label: "Friends" },
     { id: "network", label: "Network" },
     { id: "activity", label: "Activity" },
@@ -21,6 +23,7 @@
   let actions: Partial<Record<TabId, PanelActions>> = {};
   let panelStates = $state<Record<TabId, PanelState>>({
     general: { dirty: false, busy: false },
+    scene: { dirty: false, busy: false },
     friends: { dirty: false, busy: false },
     network: { dirty: false, busy: false },
     activity: { dirty: false, busy: false },
@@ -96,6 +99,8 @@
         <div class="h-full">
           {#if tab.id === "general"}
             <GeneralPanel {register} />
+          {:else if tab.id === "scene"}
+            <ScenePanel {register} />
           {:else if tab.id === "friends"}
             <FriendsPanel {register} />
           {:else if tab.id === "network"}

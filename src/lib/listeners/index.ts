@@ -6,6 +6,7 @@ import { initLiveMetadataListeners } from "./live-metadata";
 import { initProfileListener } from "./profile";
 import { initPuppetStatesListener } from "./puppets";
 import { initRemotesListener } from "./remotes";
+import { initSceneConfigurationListener } from "./scene-configuration";
 
 type Unlisten = () => void;
 
@@ -22,6 +23,7 @@ export function initAppListeners(): Unlisten {
     initLiveMetadataListeners(),
     initInteractionListener(),
     initPuppetStatesListener(),
+    initSceneConfigurationListener(),
   ])
     .then((results) => {
       const listeners = results.flatMap((result) =>

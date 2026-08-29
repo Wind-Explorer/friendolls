@@ -32,13 +32,19 @@ export class Puppet {
   private readonly skin: PuppetSkin;
   private readonly targetGroundPosition = new THREE.Vector3();
 
-  constructor(readonly id: string) {
+  constructor(readonly id: string, scale: number) {
     this.rig = this.createRig();
     this.root = this.rig.root;
     this.animation = new PuppetAnimation(this.rig);
     const placeholderMaterial = this.rig.body.material;
     this.skin = new PuppetSkin(id, this.rig);
+    this.setScale(scale);
     if (!Array.isArray(placeholderMaterial)) placeholderMaterial.dispose();
+  }
+
+  setScale(scale: number) {
+    if (this.root.scale.x === scale) return;
+    this.root.scale.setScalar(scale);
   }
 
   update(
@@ -81,50 +87,49 @@ export class Puppet {
   private createRig(): PuppetRig {
     const root = new THREE.Group();
     const material = new THREE.MeshStandardMaterial();
-    const scale = 1;
 
     const body = new THREE.Mesh(
-      new THREE.BoxGeometry(16 * scale, 24 * scale, 8 * scale),
+      new THREE.BoxGeometry(16, 24, 8),
       material,
     );
-    body.position.y = 36 * scale;
+    body.position.y = 36;
 
     const head = new THREE.Mesh(
-      new THREE.BoxGeometry(16 * scale, 16 * scale, 16 * scale),
+      new THREE.BoxGeometry(16, 16, 16),
       material,
     );
-    head.position.y = 56 * scale;
+    head.position.y = 56;
 
     const { pivot: leftArm, mesh: leftArmMesh } = this.createLimbPivot(
-      -12 * scale,
-      48 * scale,
-      8 * scale,
-      24 * scale,
-      8 * scale,
+      -12,
+      48,
+      8,
+      24,
+      8,
       material,
     );
     const { pivot: rightArm, mesh: rightArmMesh } = this.createLimbPivot(
-      12 * scale,
-      48 * scale,
-      8 * scale,
-      24 * scale,
-      8 * scale,
+      12,
+      48,
+      8,
+      24,
+      8,
       material,
     );
     const { pivot: leftLeg, mesh: leftLegMesh } = this.createLimbPivot(
-      -4 * scale,
-      24 * scale,
-      8 * scale,
-      24 * scale,
-      8 * scale,
+      -4,
+      24,
+      8,
+      24,
+      8,
       material,
     );
     const { pivot: rightLeg, mesh: rightLegMesh } = this.createLimbPivot(
-      4 * scale,
-      24 * scale,
-      8 * scale,
-      24 * scale,
-      8 * scale,
+      4,
+      24,
+      8,
+      24,
+      8,
       material,
     );
 

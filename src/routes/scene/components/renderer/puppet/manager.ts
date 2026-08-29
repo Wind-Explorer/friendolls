@@ -10,12 +10,13 @@ export class PuppetManager {
 
   update(
     states: readonly PuppetState[],
+    scale: number,
     frozenPuppetId: string | null,
     deltaSeconds: number,
     elapsedSeconds: number,
     skinHashes: ReadonlyMap<string, string | null>,
   ) {
-    this.syncPuppets(states);
+    this.syncPuppets(states, scale);
 
     for (const state of states) {
       this.puppets
@@ -46,16 +47,18 @@ export class PuppetManager {
     this.puppets.clear();
   }
 
-  private syncPuppets(states: readonly PuppetState[]) {
+  private syncPuppets(states: readonly PuppetState[], scale: number) {
     const nextPuppetIds = new Set(states.map((state) => state.id));
 
     for (const state of states) {
       if (this.puppets.has(state.id)) continue;
 
-      const puppet = new Puppet(state.id);
+      const puppet = new Puppet(state.id, scale);
       this.puppets.set(puppet.id, puppet);
       this.world.addObject(puppet.root);
     }
+
+    for (const puppet of this.puppets.values()) puppet.setScale(scale);
 
     for (const [puppetId, puppet] of this.puppets) {
       if (nextPuppetIds.has(puppetId)) continue;
