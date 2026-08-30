@@ -1,4 +1,4 @@
-use device_query::{DeviceEvents, DeviceEventsHandler};
+use device_query::{DeviceEvents, DeviceEventsHandler, DeviceQuery, DeviceState};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -63,6 +63,38 @@ impl CursorState {
             .map(|positions| positions.clone())
             .map_err(|error| error.to_string())
     }
+
+    pub(crate) fn get(&self, user_id: &str) -> Result<Option<CursorPositions>, String> {
+        self.0
+            .read()
+            .map(|positions| positions.get(user_id).cloned())
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn current_position(handle: &AppHandle) -> Result<CursorPositions, String> {
+    let monitor = handle
+        .primary_monitor()
+        .map_err(|error| error.to_string())?
+        .ok_or("Primary monitor is unavailable")?;
+    let position = DeviceState::new().get_mouse().coords;
+
+    #[cfg(target_os = "windows")]
+    let raw = CursorPosition {
+        x: position.0 as f64,
+        y: position.1 as f64,
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let raw = CursorPosition {
+        x: position.0 as f64 * monitor.scale_factor(),
+        y: position.1 as f64 * monitor.scale_factor(),
+    };
+
+    Ok(CursorPositions {
+        mapped: transform_cursor_pos(&raw, true, &monitor),
+        raw,
+    })
 }
 
 // Was private, but for some reason LSP
@@ -93,6 +125,11 @@ pub fn init(app: &AppHandle) {
     if tracker.is_some() {
         println!("Cursor tracking already initialized");
         return;
+    }
+
+    match current_position(app) {
+        Ok(positions) => update_cursor_position(app, positions),
+        Err(error) => eprintln!("Failed to resolve current cursor position: {error}"),
     }
 
     let (stop_tx, stop_rx) = watch::channel(false);

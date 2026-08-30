@@ -23,10 +23,10 @@ async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     scene_configuration::init(handle).await?;
     keypair::init(handle).await?;
     app.manage(interactions::InteractionState::default());
-    network::init(handle).await?;
     app.manage(ufa::ForegroundAppState::default());
     app.manage(cursor::CursorState::default());
     app.manage(puppet::PuppetStateStore::default());
+    network::init(handle).await?;
     ufa::init(handle);
     cursor::init(handle);
     puppet::init(handle)?;
@@ -79,6 +79,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             network::list_statuses,
             network::list_friend_statuses,
             network::resolve_friend_display_name,
+            live_data::list_live_data,
             skins::resolve_skin,
             images::pick_and_send_image,
             images::send_image_bytes,

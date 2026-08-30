@@ -4,6 +4,7 @@ use std::sync::Mutex;
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Change {
     pub(super) online: Vec<String>,
+    pub(super) came_online: Vec<String>,
     pub(super) went_offline: Vec<String>,
 }
 
@@ -88,11 +89,14 @@ fn diff(before: HashSet<String>, by_remote: &HashMap<String, HashSet<String>>) -
         return None;
     }
     let mut went_offline = before.difference(&after).cloned().collect::<Vec<_>>();
+    let mut came_online = after.difference(&before).cloned().collect::<Vec<_>>();
     let mut online = after.into_iter().collect::<Vec<_>>();
+    came_online.sort_unstable();
     went_offline.sort_unstable();
     online.sort_unstable();
     Some(Change {
         online,
+        came_online,
         went_offline,
     })
 }
@@ -110,6 +114,7 @@ mod tests {
                 .unwrap(),
             Some(Change {
                 online: vec!["friend".to_owned()],
+                came_online: vec!["friend".to_owned()],
                 went_offline: Vec::new(),
             })
         );
@@ -124,6 +129,7 @@ mod tests {
             presence.remove("remote-b").unwrap(),
             Some(Change {
                 online: Vec::new(),
+                came_online: Vec::new(),
                 went_offline: vec!["friend".to_owned()],
             })
         );
@@ -136,14 +142,12 @@ mod tests {
             .replace("remote", vec!["kept".to_owned(), "removed".to_owned()])
             .unwrap();
 
-        assert_eq!(
-            presence
-                .update("remote", "added".to_owned(), true)
-                .unwrap()
-                .expect("friend came online")
-                .online,
-            ["added", "kept", "removed"]
-        );
+        let change = presence
+            .update("remote", "added".to_owned(), true)
+            .unwrap()
+            .expect("friend came online");
+        assert_eq!(change.online, ["added", "kept", "removed"]);
+        assert_eq!(change.came_online, ["added"]);
         assert_eq!(
             presence
                 .update("remote", "added".to_owned(), false)

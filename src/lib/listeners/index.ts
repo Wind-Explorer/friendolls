@@ -10,17 +10,29 @@ import { initSceneConfigurationListener } from "./scene-configuration";
 
 type Unlisten = () => void;
 
+async function initPresenceListeners(): Promise<Unlisten> {
+  const unlistenLiveMetadata = await initLiveMetadataListeners();
+  try {
+    const unlistenFriendStatuses = await initFriendStatusesListener();
+    return () => {
+      unlistenFriendStatuses();
+      unlistenLiveMetadata();
+    };
+  } catch (error) {
+    unlistenLiveMetadata();
+    throw error;
+  }
+}
+
 export function initAppListeners(): Unlisten {
   let disposed = false;
   let unlisteners: Unlisten[] = [];
-
   Promise.allSettled([
     initFriendsListener(),
     initRemotesListener(),
     initProfileListener(),
     initConnectionStatusesListener(),
-    initFriendStatusesListener(),
-    initLiveMetadataListeners(),
+    initPresenceListeners(),
     initInteractionListener(),
     initPuppetStatesListener(),
     initSceneConfigurationListener(),

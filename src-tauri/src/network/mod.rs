@@ -261,12 +261,13 @@ impl Network {
             .filter(|(id, connection)| desired.get(*id) != Some(&connection.remote))
             .map(|(id, _)| id.clone())
             .collect();
+        let mut presence_changes = Vec::new();
 
         for id in stale {
             if let Some(connection) = connections.remove(&id) {
                 connection.task.abort();
                 remove_status(&self.statuses, &id, connection.generation);
-                apply_friend_presence_change(handle, self.friend_presence.remove(&id));
+                presence_changes.push(self.friend_presence.remove(&id));
             }
         }
 
@@ -317,6 +318,9 @@ impl Network {
         }
 
         drop(connections);
+        for change in presence_changes {
+            apply_friend_presence_change(handle, change);
+        }
         emit_statuses(handle, &self.statuses)
     }
 }
@@ -337,8 +341,10 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         keypair,
         next_generation: AtomicU64::new(1),
     };
-    network.sync_remotes(handle, remotes::all(&database).await?)?;
     handle.manage(network);
+    handle
+        .state::<Network>()
+        .sync_remotes(handle, remotes::all(&database).await?)?;
 
     let listener_handle = handle.clone();
     RemotesChanged::listen(handle, move |event| {
@@ -411,6 +417,17 @@ fn apply_friend_presence_change(
     match result {
         Ok(Some(change)) => {
             crate::cursor::remove_positions(handle, &change.went_offline);
+            if let Err(error) = handle
+                .state::<crate::ufa::ForegroundAppState>()
+                .remove(&change.went_offline)
+            {
+                eprintln!("failed to remove offline foreground apps: {error}");
+            }
+            if !change.came_online.is_empty()
+                && let Err(error) = crate::live_data::publish_current(handle)
+            {
+                eprintln!("failed to publish current live data: {error}");
+            }
             if let Err(error) = (FriendStatusesChanged {
                 friend_ids: change.online,
             })

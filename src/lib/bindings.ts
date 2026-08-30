@@ -50,6 +50,9 @@ async listFriendStatuses() : Promise<string[]> {
 async resolveFriendDisplayName(userId: string) : Promise<string | null> {
     return await TAURI_INVOKE("resolve_friend_display_name", { userId });
 },
+async listLiveData() : Promise<LiveDataSnapshot> {
+    return await TAURI_INVOKE("list_live_data");
+},
 async resolveSkin(userId: string, skinHash: string) : Promise<string | null> {
     return await TAURI_INVOKE("resolve_skin", { userId, skinHash });
 },
@@ -142,6 +145,7 @@ export type FriendInteractionReceived = { interactionId: string; friendId: strin
 export type FriendStatusesChanged = { friendIds: string[] }
 export type FriendsChanged = { friends: Friend[] }
 export type InteractionContent = { type: "text"; text: string } | { type: "wave" } | { type: "image"; mediaType: string; data: string }
+export type LiveDataSnapshot = { cursorPositions: Partial<{ [key in string]: CursorPositions }>; foregroundApps: Partial<{ [key in string]: AppMeta }> }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
 export type ProfileChanged = { profile: User }
 export type PuppetMovementMode = "free" | "bottom"
