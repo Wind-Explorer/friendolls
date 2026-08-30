@@ -75,6 +75,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             remotes::delete_remote,
             profile::get_profile,
             profile::update_profile,
+            profile::reset_profile_skin,
             keypair::get_public_key,
             network::list_statuses,
             network::list_friend_statuses,

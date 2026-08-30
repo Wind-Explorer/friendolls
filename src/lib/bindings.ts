@@ -38,6 +38,9 @@ async getProfile() : Promise<User> {
 async updateProfile(displayName: string, skinData: number[] | null) : Promise<User> {
     return await TAURI_INVOKE("update_profile", { displayName, skinData });
 },
+async resetProfileSkin() : Promise<User> {
+    return await TAURI_INVOKE("reset_profile_skin");
+},
 async getPublicKey() : Promise<string> {
     return await TAURI_INVOKE("get_public_key");
 },

@@ -52,6 +52,15 @@ async fn update(
     get(database, public_key).await
 }
 
+async fn reset_skin(database: &AppDatabase, public_key: &str) -> Result<User, sqlx::Error> {
+    sqlx::query("UPDATE profile SET skin_hash = NULL WHERE id = ?1")
+        .bind(PROFILE_ID)
+        .execute(database.pool())
+        .await?;
+
+    get(database, public_key).await
+}
+
 fn emit_changed(handle: &AppHandle, profile: User) -> Result<(), String> {
     ProfileChanged { profile }
         .emit(handle)
@@ -87,6 +96,22 @@ pub async fn update_profile(
         .map(|data| crate::skins::store_local(&handle, data))
         .transpose()?;
     let profile = update(&database, keypair.public_key(), display_name, skin_hash)
+        .await
+        .map_err(db::command_error)?;
+    network.update_profile(profile.clone());
+    emit_changed(&handle, profile.clone())?;
+    Ok(profile)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn reset_profile_skin(
+    handle: AppHandle,
+    database: State<'_, AppDatabase>,
+    keypair: State<'_, AppKeypair>,
+    network: State<'_, Network>,
+) -> Result<User, String> {
+    let profile = reset_skin(&database, keypair.public_key())
         .await
         .map_err(db::command_error)?;
     network.update_profile(profile.clone());
@@ -161,5 +186,31 @@ mod tests {
         .expect("read profile columns");
 
         assert_eq!(columns, vec!["id", "display_name", "skin_hash"]);
+    }
+
+    #[tokio::test]
+    async fn resetting_skin_preserves_the_display_name() {
+        let database = database().await;
+        update(
+            &database,
+            "public-key",
+            "Wind".to_owned(),
+            Some("a".repeat(64)),
+        )
+        .await
+        .expect("set profile skin");
+
+        let profile = reset_skin(&database, "public-key")
+            .await
+            .expect("reset profile skin");
+
+        assert_eq!(
+            profile,
+            User {
+                id: "public-key".to_owned(),
+                display_name: "Wind".to_owned(),
+                skin_hash: None,
+            }
+        );
     }
 }

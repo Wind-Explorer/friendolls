@@ -18,6 +18,7 @@
   let skinFile = $state<File | null>(null);
   let skinPreviewUrl = $state<string | null>(null);
   let skinInput = $state<HTMLInputElement | null>(null);
+  let pendingSkinReset = $state(false);
   let dirty = $state(false);
   let busy = $state(false);
   let error = $state("");
@@ -45,7 +46,7 @@
   }
 
   function updateDirty() {
-    dirty = hasConfigurationChanges() || skinFile !== null;
+    dirty = hasConfigurationChanges() || skinFile !== null || pendingSkinReset;
     error = "";
   }
 
@@ -58,8 +59,15 @@
 
   function selectSkinFile(file: File | null) {
     clearSkinDraft();
+    pendingSkinReset = false;
     skinFile = file;
     skinPreviewUrl = file ? URL.createObjectURL(file) : null;
+    updateDirty();
+  }
+
+  function resetSkin() {
+    clearSkinDraft();
+    pendingSkinReset = true;
     updateDirty();
   }
 
@@ -68,6 +76,7 @@
     puppetOpacity = $sceneConfiguration.puppetOpacity;
     puppetMovementMode = $sceneConfiguration.puppetMovementMode;
     clearSkinDraft();
+    pendingSkinReset = false;
     dirty = false;
     error = "";
   }
@@ -78,7 +87,10 @@
     busy = true;
     error = "";
     try {
-      if (skinFile) {
+      if (pendingSkinReset) {
+        await commands.resetProfileSkin();
+        pendingSkinReset = false;
+      } else if (skinFile) {
         const currentProfile = await commands.getProfile();
         const skinData = Array.from(
           new Uint8Array(await skinFile.arrayBuffer()),
@@ -100,7 +112,8 @@
       dirty = false;
       return true;
     } catch (cause) {
-      dirty = hasConfigurationChanges() || skinFile !== null;
+      dirty =
+        hasConfigurationChanges() || skinFile !== null || pendingSkinReset;
       error = String(cause);
       return false;
     } finally {
@@ -141,7 +154,7 @@
             <div class="size-full z-10">
               <PuppetPreview
                 userId={$profile.id}
-                skinHash={$profile.skinHash}
+                skinHash={pendingSkinReset ? null : $profile.skinHash}
                 skinSource={skinPreviewUrl}
                 scale={puppetScale}
                 opacity={puppetOpacity}
@@ -192,14 +205,22 @@
           />
         </div>
       </fieldset>
-      <div>
+      <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
         <button
           class="btn w-full"
           type="button"
           disabled={!$profile || busy}
           onclick={() => skinInput?.click()}
         >
-          Choose a custom skin
+          Choose a skin
+        </button>
+        <button
+          class="btn"
+          type="button"
+          disabled={!$profile || busy || (!$profile.skinHash && !skinFile)}
+          onclick={resetSkin}
+        >
+          Reset
         </button>
         <input
           id="skin-file"
