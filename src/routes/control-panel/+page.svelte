@@ -72,7 +72,7 @@
   }
 </script>
 
-<svelte:head><title>Wyd Properties</title></svelte:head>
+<svelte:head><title>Friendolls Properties</title></svelte:head>
 
 <main
   class="flex h-full min-h-0 flex-col overflow-hidden bg-base-100 p-2 text-base-content"

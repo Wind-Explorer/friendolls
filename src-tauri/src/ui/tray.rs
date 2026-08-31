@@ -24,7 +24,7 @@ pub fn init(handle: &AppHandle) {
         .expect("Tray menu should be created");
 
     let mut builder = TrayIconBuilder::new()
-        .tooltip("Wyd")
+        .tooltip("Friendolls")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {

@@ -3,12 +3,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use friendolls_common::{InteractionContent, InteractionDeliveryStatus};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 use tokio::sync::{mpsc, oneshot, watch};
-use wyd_common::{InteractionContent, InteractionDeliveryStatus};
 
 use crate::db::AppDatabase;
 use crate::friends::{self, FriendsChanged};

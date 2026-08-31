@@ -1,7 +1,7 @@
 use axum::extract::ws::Message;
 use tokio::sync::mpsc;
 use uuid::Uuid;
-use wyd_common::{Profile, ServerMessage, profile_bytes};
+use friendolls_common::{Profile, ServerMessage, profile_bytes};
 
 use super::{Client, Clients, verify};
 
@@ -23,7 +23,7 @@ pub(super) async fn update(
         || profile
             .skin_hash
             .as_deref()
-            .is_some_and(|hash| !wyd_common::is_skin_hash(hash))
+            .is_some_and(|hash| !friendolls_common::is_skin_hash(hash))
         || !verify(&client.key, &profile_bytes(&profile), signature)
     {
         return false;

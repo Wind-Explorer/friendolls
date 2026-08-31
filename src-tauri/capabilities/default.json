@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for Wyd UI windows",
+  "description": "Capability for Friendolls UI windows",
   "windows": ["control-panel", "control-panel-action-*", "debug", "scene"],
   "permissions": [
     "core:default",

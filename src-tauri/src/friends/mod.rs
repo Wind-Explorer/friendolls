@@ -41,7 +41,7 @@ async fn emit_changed(handle: &AppHandle, database: &AppDatabase) -> Result<(), 
 
 async fn update_profiles(
     database: &AppDatabase,
-    profiles: &[wyd_common::Profile],
+    profiles: &[friendolls_common::Profile],
 ) -> Result<bool, sqlx::Error> {
     let mut transaction = database.pool().begin().await?;
     let mut changed = false;
@@ -49,7 +49,7 @@ async fn update_profiles(
         if profile
             .skin_hash
             .as_deref()
-            .is_some_and(|hash| !wyd_common::is_skin_hash(hash))
+            .is_some_and(|hash| !friendolls_common::is_skin_hash(hash))
         {
             continue;
         }
@@ -71,7 +71,7 @@ async fn update_profiles(
 pub(crate) async fn apply_profile_update(
     handle: &AppHandle,
     database: &AppDatabase,
-    profile: wyd_common::Profile,
+    profile: friendolls_common::Profile,
 ) -> Result<bool, String> {
     apply_profile_sync(handle, database, vec![profile]).await
 }
@@ -79,7 +79,7 @@ pub(crate) async fn apply_profile_update(
 pub(crate) async fn apply_profile_sync(
     handle: &AppHandle,
     database: &AppDatabase,
-    profiles: Vec<wyd_common::Profile>,
+    profiles: Vec<friendolls_common::Profile>,
 ) -> Result<bool, String> {
     let changed = update_profiles(database, &profiles)
         .await
@@ -205,12 +205,12 @@ mod tests {
             update_profiles(
                 &database,
                 &[
-                    wyd_common::Profile {
+                    friendolls_common::Profile {
                         id: "friend-id".to_owned(),
                         display_name: "New".to_owned(),
                         skin_hash: Some("a".repeat(64)),
                     },
-                    wyd_common::Profile {
+                    friendolls_common::Profile {
                         id: "missing".to_owned(),
                         display_name: "Name".to_owned(),
                         skin_hash: None,
@@ -223,7 +223,7 @@ mod tests {
         assert!(
             !update_profiles(
                 &database,
-                &[wyd_common::Profile {
+                &[friendolls_common::Profile {
                     id: "friend-id".to_owned(),
                     display_name: "New".to_owned(),
                     skin_hash: Some("a".repeat(64)),

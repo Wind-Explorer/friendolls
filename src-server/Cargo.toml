@@ -1,5 +1,5 @@
 [package]
-name = "wyd-server"
+name = "friendolls-server"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -13,4 +13,4 @@ futures-util = "0.3"
 image = { version = "0.25", default-features = false, features = ["jpeg", "webp"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
-wyd-common = { path = "../src-common" }
+friendolls-common = { path = "../src-common" }

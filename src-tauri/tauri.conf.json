@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "wyd",
+  "productName": "friendolls",
   "version": "0.1.0",
-  "identifier": "com.adamcv.wyd",
+  "identifier": "com.adamcv.friendolls",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",

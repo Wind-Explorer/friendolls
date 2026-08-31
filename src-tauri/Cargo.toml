@@ -1,5 +1,5 @@
 [package]
-name = "wyd"
+name = "friendolls"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
@@ -11,7 +11,7 @@ edition = "2024"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "wyd_lib"
+name = "friendolls_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -39,7 +39,7 @@ specta = "2.0.0-rc.21"
 specta-typescript = { version = "0.0.9" }
 uuid = { version = "1", features = ["v4"] }
 webp = { version = "0.3.1", default-features = false }
-wyd-common = { path = "../src-common" }
+friendolls-common = { path = "../src-common" }
 
 [dev-dependencies]
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }

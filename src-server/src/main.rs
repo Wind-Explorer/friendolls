@@ -12,7 +12,7 @@ async fn main() -> std::io::Result<()> {
         .merge(network::routes())
         .fallback((StatusCode::NOT_FOUND, "not found"));
 
-    println!("wyd-server listening on http://{bind_addr}");
+    println!("friendolls-server listening on http://{bind_addr}");
 
     axum::serve(listener, app).await
 }

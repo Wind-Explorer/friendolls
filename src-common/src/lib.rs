@@ -170,7 +170,7 @@ pub enum ServerMessage {
 
 pub fn register_bytes(challenge: &str, profile: &Profile, friends: &[String]) -> Vec<u8> {
     format!(
-        "wyd-register-v{VERSION}\n{challenge}\n{}\n{}\n{}\n{}",
+        "friendolls-register-v{VERSION}\n{challenge}\n{}\n{}\n{}\n{}",
         profile.id,
         profile.display_name,
         profile.skin_hash.as_deref().unwrap_or(""),
@@ -180,11 +180,11 @@ pub fn register_bytes(challenge: &str, profile: &Profile, friends: &[String]) ->
 }
 
 pub fn message_bytes(payload: &str) -> Vec<u8> {
-    format!("wyd-message-v{VERSION}\n{payload}").into_bytes()
+    format!("friendolls-message-v{VERSION}\n{payload}").into_bytes()
 }
 
 pub fn interaction_bytes(interaction_id: &str, recipient_id: &str, payload: &str) -> Vec<u8> {
-    let mut bytes = format!("wyd-interaction-v{VERSION}\0").into_bytes();
+    let mut bytes = format!("friendolls-interaction-v{VERSION}\0").into_bytes();
     for value in [
         interaction_id.as_bytes(),
         recipient_id.as_bytes(),
@@ -198,7 +198,7 @@ pub fn interaction_bytes(interaction_id: &str, recipient_id: &str, payload: &str
 
 pub fn profile_bytes(profile: &Profile) -> Vec<u8> {
     format!(
-        "wyd-profile-v{VERSION}\n{}\n{}\n{}",
+        "friendolls-profile-v{VERSION}\n{}\n{}\n{}",
         profile.id,
         profile.display_name,
         profile.skin_hash.as_deref().unwrap_or("")
@@ -207,7 +207,7 @@ pub fn profile_bytes(profile: &Profile) -> Vec<u8> {
 }
 
 pub fn friends_bytes(friends: &[String]) -> Vec<u8> {
-    format!("wyd-friends-v{VERSION}\n{}", friends.join("\n")).into_bytes()
+    format!("friendolls-friends-v{VERSION}\n{}", friends.join("\n")).into_bytes()
 }
 
 #[cfg(test)]

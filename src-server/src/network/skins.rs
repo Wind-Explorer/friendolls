@@ -1,6 +1,6 @@
 use axum::extract::ws::Message;
+use friendolls_common::{MAX_SKIN_B64_SIZE, ServerMessage};
 use uuid::Uuid;
-use wyd_common::{MAX_SKIN_B64_SIZE, ServerMessage};
 
 use super::{Clients, are_mutual_friends};
 
@@ -110,8 +110,8 @@ mod tests {
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use ed25519_dalek::SigningKey;
+    use friendolls_common::Profile;
     use tokio::sync::mpsc;
-    use wyd_common::Profile;
 
     use super::*;
     use crate::network::Client;

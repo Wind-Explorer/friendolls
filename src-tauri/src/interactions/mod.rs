@@ -3,11 +3,11 @@ use std::sync::Mutex;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use friendolls_common::InteractionContent;
 use serde::Serialize;
 use specta::Type;
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
-use wyd_common::InteractionContent;
 
 use crate::network::Network;
 
@@ -106,7 +106,7 @@ pub async fn send_interaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wyd_common::MAX_TEXT_CHARS;
+    use friendolls_common::MAX_TEXT_CHARS;
 
     #[test]
     fn validates_interaction_content_limits() {

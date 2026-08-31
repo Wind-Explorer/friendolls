@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use friendolls_common::{
+    ClientMessage, InteractionDeliveryStatus, Profile, ServerMessage, friends_bytes,
+    interaction_bytes, message_bytes, profile_bytes, register_bytes,
+};
 use futures_util::{SinkExt, StreamExt};
 use tauri::{AppHandle, Manager};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
-use wyd_common::{
-    ClientMessage, InteractionDeliveryStatus, Profile, ServerMessage, friends_bytes,
-    interaction_bytes, message_bytes, profile_bytes, register_bytes,
-};
 
 use super::presence::FriendPresence;
 use super::{
@@ -113,7 +113,9 @@ async fn connect(
     let (mut writer, mut reader) = socket.split();
 
     let challenge = match recv(&mut reader).await? {
-        ServerMessage::Challenge { version, challenge } if version == wyd_common::VERSION => {
+        ServerMessage::Challenge { version, challenge }
+            if version == friendolls_common::VERSION =>
+        {
             challenge
         }
         _ => return Err("server did not send a compatible challenge".into()),

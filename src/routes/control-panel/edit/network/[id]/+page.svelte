@@ -109,7 +109,7 @@
     <div>
       <h1 class="text-sm font-bold">Edit server</h1>
       <p class="text-xs text-base-content/65">
-        Update how Wyd connects to this remote server.
+        Update how Friendolls connects to this remote server.
       </p>
     </div>
 

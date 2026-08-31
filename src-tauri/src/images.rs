@@ -2,12 +2,12 @@ use std::io::Cursor;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use friendolls_common::{InteractionContent, MAX_IMAGE_B64_SIZE, MAX_IMAGE_DIMENSION};
 use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageReader, Limits, Rgb, RgbImage};
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
-use wyd_common::{InteractionContent, MAX_IMAGE_B64_SIZE, MAX_IMAGE_DIMENSION};
 
 use crate::network::Network;
 

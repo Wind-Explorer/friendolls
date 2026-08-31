@@ -13,7 +13,7 @@ const SKIN_WIDTH: u32 = 64;
 const SKIN_HEIGHT: u32 = 64;
 
 fn validate_hash(hash: &str) -> Result<(), String> {
-    if wyd_common::is_skin_hash(hash) {
+    if friendolls_common::is_skin_hash(hash) {
         Ok(())
     } else {
         Err("Skin hash must be a 64-character SHA-256 value".to_owned())
@@ -72,7 +72,7 @@ fn read_verified(path: PathBuf, expected_hash: &str) -> Result<Option<Vec<u8>>, 
 }
 
 pub(crate) fn decode_response(data: &str, expected_hash: &str) -> Option<Vec<u8>> {
-    if data.len() > wyd_common::MAX_SKIN_B64_SIZE {
+    if data.len() > friendolls_common::MAX_SKIN_B64_SIZE {
         return None;
     }
     let bytes = STANDARD.decode(data).ok()?;

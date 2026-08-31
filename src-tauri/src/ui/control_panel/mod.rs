@@ -14,7 +14,7 @@ pub fn init(handle: &AppHandle) {
         WINDOW_LABEL,
         WebviewUrl::App("/control-panel".into()),
     )
-    .title("Wyd Control Panel")
+    .title("Friendolls")
     .inner_size(400.0, 600.0)
     .min_inner_size(400.0, 600.0)
     .resizable(false)

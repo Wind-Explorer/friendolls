@@ -3,7 +3,7 @@ use sqlx::{Pool, Sqlite};
 use std::error::Error;
 use tauri::{AppHandle, Manager};
 
-const DATABASE_FILE: &str = "wyd.sqlite";
+const DATABASE_FILE: &str = "friendolls.sqlite";
 
 pub struct AppDatabase {
     pool: Pool<Sqlite>,

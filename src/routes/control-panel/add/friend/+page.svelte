@@ -87,8 +87,8 @@
     {#if error}<PanelMessage kind="error">{error}</PanelMessage>{/if}
 
     <PanelMessage>
-      Their display name will appear after Wyd learns their profile from a
-      shared server.
+      Their display name will appear after Friendolls learns their profile from
+      a shared server.
     </PanelMessage>
 
     <fieldset class="fieldset border border-base-300 bg-base-100 p-3">

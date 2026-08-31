@@ -5,7 +5,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use tokio::sync::mpsc;
 use uuid::Uuid;
-use wyd_common::{
+use friendolls_common::{
     InteractionContent, InteractionDeliveryStatus, MAX_IMAGE_DIMENSION,
     MAX_INTERACTION_PAYLOAD_BYTES, ServerMessage, interaction_bytes,
 };
@@ -102,7 +102,7 @@ mod tests {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use ed25519_dalek::{Signer, SigningKey};
     use image::{Rgb, RgbImage};
-    use wyd_common::{MAX_TEXT_CHARS, Profile};
+    use friendolls_common::{MAX_TEXT_CHARS, Profile};
 
     use super::*;
     use crate::network::Client;

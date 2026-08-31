@@ -10,10 +10,10 @@ use axum::routing::get;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use friendolls_common::{ClientMessage, Profile, ServerMessage, message_bytes, register_bytes};
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
-use wyd_common::{ClientMessage, Profile, ServerMessage, message_bytes, register_bytes};
 
 mod interactions;
 mod presence;
@@ -50,7 +50,7 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
     if send(
         &mut socket,
         &ServerMessage::Challenge {
-            version: wyd_common::VERSION,
+            version: friendolls_common::VERSION,
             challenge: challenge.clone(),
         },
     )
@@ -74,7 +74,7 @@ async fn connected(mut socket: WebSocket, clients: Clients) {
     if profile
         .skin_hash
         .as_deref()
-        .is_some_and(|hash| !wyd_common::is_skin_hash(hash))
+        .is_some_and(|hash| !friendolls_common::is_skin_hash(hash))
     {
         return;
     }
@@ -335,7 +335,7 @@ fn verify(key: &VerifyingKey, bytes: &[u8], signature: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use ed25519_dalek::{Signer, SigningKey};
-    use wyd_common::friends_bytes;
+    use friendolls_common::friends_bytes;
 
     use super::*;
 

@@ -1324,6 +1324,63 @@ dependencies = [
 ]
 
 [[package]]
+name = "friendolls"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "device_query",
+ "ed25519-dalek",
+ "friendolls-common",
+ "futures-util",
+ "getrandom 0.4.3",
+ "image",
+ "lazy_static",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "specta",
+ "specta-typescript",
+ "sqlx",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-specta",
+ "tokio",
+ "tokio-tungstenite 0.28.0",
+ "uuid",
+ "webp",
+ "windows 0.58.0",
+]
+
+[[package]]
+name = "friendolls-common"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "specta",
+]
+
+[[package]]
+name = "friendolls-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "friendolls-common",
+ "futures-util",
+ "image",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6262,63 +6319,6 @@ dependencies = [
  "windows-core 0.61.2",
  "windows-version",
  "x11-dl",
-]
-
-[[package]]
-name = "wyd"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "device_query",
- "ed25519-dalek",
- "futures-util",
- "getrandom 0.4.3",
- "image",
- "lazy_static",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "specta",
- "specta-typescript",
- "sqlx",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-specta",
- "tokio",
- "tokio-tungstenite 0.28.0",
- "uuid",
- "webp",
- "windows 0.58.0",
- "wyd-common",
-]
-
-[[package]]
-name = "wyd-common"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "specta",
-]
-
-[[package]]
-name = "wyd-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "ed25519-dalek",
- "futures-util",
- "image",
- "serde_json",
- "tokio",
- "uuid",
- "wyd-common",
 ]
 
 [[package]]

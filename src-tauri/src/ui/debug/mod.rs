@@ -14,7 +14,7 @@ pub fn init(handle: &AppHandle) {
 
     let builder =
         tauri::WebviewWindowBuilder::new(handle, WINDOW_LABEL, WebviewUrl::App("/".into()))
-            .title("Wyd Debug")
+            .title("Friendolls Debug")
             .inner_size(800.0, 600.0)
             .min_inner_size(500.0, 400.0)
             .visible(true);
