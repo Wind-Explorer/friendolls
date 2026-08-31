@@ -13,12 +13,14 @@ mod scene_configuration;
 mod skins;
 mod ufa;
 mod ui;
+mod updater;
 mod user;
 
 use tauri::Manager;
 
 async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle();
+    updater::init(handle).await;
     db::init(handle).await?;
     scene_configuration::init(handle).await?;
     keypair::init(handle).await?;
@@ -47,6 +49,7 @@ pub fn run() {
         .expect("Failed to export TypeScript bindings");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(specta_builder.invoke_handler())

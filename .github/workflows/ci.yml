@@ -1,0 +1,67 @@
+name: Staging
+
+on:
+  push:
+    branches: [staging]
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      desktop: ${{ steps.filter.outputs.desktop }}
+      server: ${{ steps.filter.outputs.server }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          base: ${{ github.ref }}
+          filters: |
+            desktop:
+              - 'src/**'
+              - 'src-tauri/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'svelte.config.js'
+              - 'tsconfig.json'
+              - 'vite.config.js'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'src-common/**'
+              - '.github/workflows/**'
+            server:
+              - 'src-server/**'
+              - 'Dockerfile'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'src-common/**'
+              - '.github/workflows/**'
+
+  desktop:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: cargo check --locked --package friendolls
+
+  server:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked --package friendolls-server
+      - name: Ensure the production image builds
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
