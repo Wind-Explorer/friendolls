@@ -94,4 +94,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/friendolls-server:latest
+          tags: ghcr.io/wind-explorer/friendolls-server:latest
