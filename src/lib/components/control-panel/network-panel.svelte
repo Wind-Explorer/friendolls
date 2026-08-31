@@ -67,6 +67,24 @@
     }
   }
 
+  async function moveRemote(id: string, offset: -1 | 1) {
+    const index = $remotes.findIndex((remote) => remote.id === id);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= $remotes.length) return;
+
+    const ordered = [...$remotes];
+    [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+    busy = true;
+    error = "";
+    try {
+      await commands.reorderRemotes(ordered.map((remote) => remote.id));
+    } catch (cause) {
+      error = String(cause);
+    } finally {
+      busy = false;
+    }
+  }
+
   function reset() {
     mode = "browse";
     error = "";
@@ -119,13 +137,13 @@
       class="flex min-h-0 flex-1 flex-col border border-base-300 bg-base-100"
     >
       <div
-        class="grid grid-cols-[1fr_5.5rem] border-b border-base-300 bg-base-200 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-base-content/60"
+        class="grid grid-cols-[1fr_5.5rem_3.5rem] border-b border-base-300 bg-base-200 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-base-content/60"
       >
-        <span>Server</span><span>Connection</span>
+        <span>Server</span><span>Connection</span><span>Priority</span>
       </div>
       <div
         class="min-h-0 flex-1 overflow-y-auto"
-        role="listbox"
+        role="group"
         aria-label="Configured servers"
       >
         {#if $remotes.length === 0}
@@ -138,17 +156,20 @@
             </p>
           </div>
         {:else}
-          {#each $remotes as remote (remote.id)}
+          {#each $remotes as remote, index (remote.id)}
             {@const state = statusFor(remote.id)}
-            <button
-              type="button"
-              role="option"
-              aria-selected={selectedId === remote.id}
-              class="grid w-full grid-cols-[1fr_5.5rem] items-center border-b border-base-200 px-2 py-1.5 text-left text-xs hover:bg-base-200 aria-selected:bg-primary aria-selected:text-primary-content"
-              onclick={() => (selectedId = remote.id)}
-              ondblclick={() => openEditWindow(remote.id)}
+            <div
+              class="grid w-full grid-cols-[1fr_5.5rem_3.5rem] items-center border-b border-base-200 px-2 py-1 text-xs hover:bg-base-200"
+              class:bg-primary={selectedId === remote.id}
+              class:text-primary-content={selectedId === remote.id}
             >
-              <span class="min-w-0">
+              <button
+                type="button"
+                class="min-w-0 py-0.5 text-left"
+                aria-pressed={selectedId === remote.id}
+                onclick={() => (selectedId = remote.id)}
+                ondblclick={() => openEditWindow(remote.id)}
+              >
                 <strong class="block truncate"
                   >{remote.name ?? remote.address}</strong
                 >
@@ -157,7 +178,7 @@
                     ? `:${remote.port}`
                     : ""}</span
                 >
-              </span>
+              </button>
               <span class="flex items-center gap-1.5 capitalize">
                 <span
                   class:status-success={state === "connected"}
@@ -166,7 +187,25 @@
                 ></span>
                 {state}
               </span>
-            </button>
+              <span class="flex justify-end gap-0.5">
+                <button
+                  class="btn btn-xs px-1"
+                  type="button"
+                  aria-label={`Increase priority for ${remote.name ?? remote.address}`}
+                  title="Move up"
+                  disabled={busy || index === 0}
+                  onclick={() => moveRemote(remote.id, -1)}>↑</button
+                >
+                <button
+                  class="btn btn-xs px-1"
+                  type="button"
+                  aria-label={`Decrease priority for ${remote.name ?? remote.address}`}
+                  title="Move down"
+                  disabled={busy || index === $remotes.length - 1}
+                  onclick={() => moveRemote(remote.id, 1)}>↓</button
+                >
+              </span>
+            </div>
           {/each}
         {/if}
       </div>

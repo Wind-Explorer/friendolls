@@ -18,7 +18,6 @@ use crate::db::AppDatabase;
 use crate::friends;
 use crate::interactions;
 use crate::keypair::AppKeypair;
-use crate::live_data::LiveData;
 use crate::remotes::Remote;
 
 pub(super) struct InteractionRequest {
@@ -45,7 +44,8 @@ pub(super) struct ConnectionInputs {
     pub(super) profiles: watch::Receiver<crate::user::User>,
     pub(super) friends: watch::Receiver<Vec<String>>,
     pub(super) keypair: AppKeypair,
-    pub(super) live_data: mpsc::Receiver<String>,
+    pub(super) cursor_data: watch::Receiver<Option<String>>,
+    pub(super) foreground_app_data: watch::Receiver<Option<String>>,
     pub(super) interactions: mpsc::Receiver<InteractionRequest>,
     pub(super) profile_lookups: mpsc::Receiver<ProfileLookupRequest>,
     pub(super) skin_lookups: mpsc::Receiver<SkinLookupRequest>,
@@ -103,7 +103,8 @@ async fn connect(
         profiles,
         friends,
         keypair,
-        live_data,
+        cursor_data,
+        foreground_app_data,
         interactions: active_outgoing,
         profile_lookups,
         skin_lookups,
@@ -141,7 +142,8 @@ async fn connect(
     if !matches!(recv(&mut reader).await?, ServerMessage::Registered) {
         return Err("server rejected registration".into());
     }
-    while live_data.try_recv().is_ok() {}
+    cursor_data.borrow_and_update();
+    foreground_app_data.borrow_and_update();
     while let Ok(request) = active_outgoing.try_recv() {
         let _ = request
             .response
@@ -166,12 +168,25 @@ async fn connect(
     > = HashMap::new();
     loop {
         tokio::select! {
-            payload = live_data.recv() => {
-                let payload = payload.ok_or("network sender closed")?;
-                send(&mut writer, &ClientMessage::Signed {
-                    signature: keypair.sign(&message_bytes(&payload)),
-                    payload,
-                }).await?;
+            changed = cursor_data.changed() => {
+                changed.map_err(|_| "cursor sender closed")?;
+                let payload = { cursor_data.borrow_and_update().clone() };
+                if let Some(payload) = payload {
+                    send(&mut writer, &ClientMessage::Signed {
+                        signature: keypair.sign(&message_bytes(&payload)),
+                        payload,
+                    }).await?;
+                }
+            }
+            changed = foreground_app_data.changed() => {
+                changed.map_err(|_| "foreground-app sender closed")?;
+                let payload = { foreground_app_data.borrow_and_update().clone() };
+                if let Some(payload) = payload {
+                    send(&mut writer, &ClientMessage::Signed {
+                        signature: keypair.sign(&message_bytes(&payload)),
+                        payload,
+                    }).await?;
+                }
             }
             request = active_outgoing.recv() => {
                 let request = request.ok_or("interaction sender closed")?;
@@ -243,12 +258,19 @@ async fn connect(
             message = reader.next() => match message.ok_or("server closed the socket")?? {
                 Message::Text(text) => match serde_json::from_str(&text)? {
                     ServerMessage::FriendProfileUpdated { profile } => {
-                        let database = handle.state::<AppDatabase>();
-                        if let Err(error) = friends::apply_profile_update(handle, &database, profile).await {
-                            eprintln!("failed to update friend profile: {error}");
+                        if handle.state::<super::Network>().accept_source(&remote.id, &profile.id) {
+                            let database = handle.state::<AppDatabase>();
+                            if let Err(error) = friends::apply_profile_update(handle, &database, profile).await {
+                                eprintln!("failed to update friend profile: {error}");
+                            }
                         }
                     }
                     ServerMessage::FriendProfiles { profiles } => {
+                        let network = handle.state::<super::Network>();
+                        let profiles = profiles
+                            .into_iter()
+                            .filter(|profile| network.accept_source(&remote.id, &profile.id))
+                            .collect();
                         let database = handle.state::<AppDatabase>();
                         if let Err(error) = friends::apply_profile_sync(handle, &database, profiles).await {
                             eprintln!("failed to synchronize friend profiles: {error}");
@@ -270,17 +292,11 @@ async fn connect(
                         );
                     }
                     ServerMessage::FriendLiveData { friend_id, payload } => {
-                        match serde_json::from_str(&payload) {
-                            Ok(LiveData::Cursor { positions }) => {
-                                crate::cursor::emit_position(handle, friend_id, positions);
-                            }
-                            Ok(LiveData::ForegroundApp { meta }) => {
-                                crate::ufa::emit_friend_app(handle, friend_id, meta);
-                            }
-                            Err(error) => {
-                                eprintln!("failed to decode friend live data: {error}");
-                            }
-                        }
+                        handle.state::<super::Network>().receive_live_data(
+                            handle,
+                            friend_id,
+                            &payload,
+                        );
                     }
                     ServerMessage::FriendInteraction {
                         interaction_id,

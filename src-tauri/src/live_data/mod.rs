@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::hash::Hash;
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -7,11 +8,41 @@ use tauri::{AppHandle, Manager};
 use crate::cursor::CursorPositions;
 use crate::ufa::AppMeta;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum LiveDataKind {
+    Cursor,
+    ForegroundApp,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveDataEnvelope {
+    pub session_id: String,
+    pub sequence: u64,
+    #[serde(flatten)]
+    pub data: LiveData,
+}
+
+impl LiveDataEnvelope {
+    pub(crate) fn kind(&self) -> LiveDataKind {
+        self.data.kind()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LiveData {
     Cursor { positions: CursorPositions },
     ForegroundApp { meta: AppMeta },
+}
+
+impl LiveData {
+    pub(crate) fn kind(&self) -> LiveDataKind {
+        match self {
+            Self::Cursor { .. } => LiveDataKind::Cursor,
+            Self::ForegroundApp { .. } => LiveDataKind::ForegroundApp,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -58,21 +89,28 @@ mod tests {
 
     #[test]
     fn live_data_is_internally_tagged_for_client_side_dispatch() {
-        let payload = serde_json::to_string(&LiveData::Cursor {
-            positions: CursorPositions {
-                raw: CursorPosition { x: 120.0, y: 80.0 },
-                mapped: CursorPosition { x: 0.25, y: 0.5 },
+        let payload = serde_json::to_string(&LiveDataEnvelope {
+            session_id: "session".to_owned(),
+            sequence: 7,
+            data: LiveData::Cursor {
+                positions: CursorPositions {
+                    raw: CursorPosition { x: 120.0, y: 80.0 },
+                    mapped: CursorPosition { x: 0.25, y: 0.5 },
+                },
             },
         })
         .unwrap();
 
         assert_eq!(
             payload,
-            r#"{"type":"cursor","positions":{"raw":{"x":120.0,"y":80.0},"mapped":{"x":0.25,"y":0.5}}}"#
+            r#"{"sessionId":"session","sequence":7,"type":"cursor","positions":{"raw":{"x":120.0,"y":80.0},"mapped":{"x":0.25,"y":0.5}}}"#
         );
         assert!(matches!(
             serde_json::from_str(&payload).unwrap(),
-            LiveData::Cursor { .. }
+            LiveDataEnvelope {
+                data: LiveData::Cursor { .. },
+                ..
+            }
         ));
     }
 }

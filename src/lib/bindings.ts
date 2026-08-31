@@ -32,6 +32,9 @@ async updateRemote(id: string, remote: RemoteInput) : Promise<Remote | null> {
 async deleteRemote(id: string) : Promise<boolean> {
     return await TAURI_INVOKE("delete_remote", { id });
 },
+async reorderRemotes(ids: string[]) : Promise<Remote[]> {
+    return await TAURI_INVOKE("reorder_remotes", { ids });
+},
 async getProfile() : Promise<User> {
     return await TAURI_INVOKE("get_profile");
 },
@@ -154,7 +157,7 @@ export type ProfileChanged = { profile: User }
 export type PuppetMovementMode = "free" | "bottom"
 export type PuppetState = { id: string; position: CursorPosition; isMoving: boolean }
 export type PuppetStatesChanged = { puppets: PuppetState[] }
-export type Remote = { id: string; address: string; name: string | null; port: number | null }
+export type Remote = { id: string; address: string; name: string | null; port: number | null; priority: number }
 export type RemoteInput = { address: string; name: string | null; port: number | null }
 export type RemotesChanged = { remotes: Remote[] }
 export type SceneConfiguration = { puppetScale: number; puppetOpacity: number; puppetMovementMode: PuppetMovementMode }

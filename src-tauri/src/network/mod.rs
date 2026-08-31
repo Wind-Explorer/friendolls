@@ -3,8 +3,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use futures_util::StreamExt;
-use futures_util::stream::FuturesUnordered;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager, State};
@@ -15,18 +13,20 @@ use wyd_common::{InteractionContent, InteractionDeliveryStatus};
 use crate::db::AppDatabase;
 use crate::friends::{self, FriendsChanged};
 use crate::keypair::AppKeypair;
-use crate::live_data::LiveData;
+use crate::live_data::{LiveData, LiveDataEnvelope, LiveDataKind};
 use crate::remotes::{self, Remote, RemotesChanged};
 
 mod connection;
 mod presence;
+mod routing;
 
 use connection::{ConnectionInputs, InteractionRequest, ProfileLookupRequest, SkinLookupRequest};
 use presence::{Change as FriendPresenceChange, FriendPresence};
+use routing::SequenceTracker;
 
 type Statuses = Arc<Mutex<HashMap<String, (u64, ConnectionStatus)>>>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum ConnectionState {
     Connecting,
@@ -57,12 +57,22 @@ pub struct FriendStatusesChanged {
 
 struct Connection {
     remote: Remote,
-    sender: mpsc::Sender<String>,
+    cursor_sender: watch::Sender<Option<String>>,
+    foreground_app_sender: watch::Sender<Option<String>>,
     interaction_sender: mpsc::Sender<InteractionRequest>,
     profile_lookup_sender: mpsc::Sender<ProfileLookupRequest>,
     skin_lookup_sender: mpsc::Sender<SkinLookupRequest>,
     task: tauri::async_runtime::JoinHandle<()>,
     generation: u64,
+}
+
+#[derive(Clone)]
+struct ConnectionSenders {
+    remote_id: String,
+    priority: i32,
+    interaction: mpsc::Sender<InteractionRequest>,
+    profile_lookup: mpsc::Sender<ProfileLookupRequest>,
+    skin_lookup: mpsc::Sender<SkinLookupRequest>,
 }
 
 pub struct Network {
@@ -73,6 +83,10 @@ pub struct Network {
     friends: watch::Sender<Vec<String>>,
     keypair: AppKeypair,
     next_generation: AtomicU64,
+    live_session_id: String,
+    next_cursor_sequence: AtomicU64,
+    next_foreground_app_sequence: AtomicU64,
+    received_sequences: SequenceTracker,
 }
 
 impl Network {
@@ -81,7 +95,18 @@ impl Network {
     }
 
     pub fn send_live_data(&self, data: LiveData) {
-        let Ok(payload) = serde_json::to_string(&data) else {
+        let sequence = match data.kind() {
+            LiveDataKind::Cursor => self.next_cursor_sequence.fetch_add(1, Ordering::Relaxed),
+            LiveDataKind::ForegroundApp => self
+                .next_foreground_app_sequence
+                .fetch_add(1, Ordering::Relaxed),
+        };
+        let envelope = LiveDataEnvelope {
+            session_id: self.live_session_id.clone(),
+            sequence,
+            data,
+        };
+        let Ok(payload) = serde_json::to_string(&envelope) else {
             eprintln!("failed to serialize live data");
             return;
         };
@@ -90,17 +115,98 @@ impl Network {
             return;
         };
         for connection in connections.values() {
-            match connection.sender.try_send(payload.clone()) {
-                Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
-                Err(mpsc::error::TrySendError::Closed(_)) => {
-                    eprintln!("remote {} cannot accept live data", connection.remote.id);
+            match envelope.kind() {
+                LiveDataKind::Cursor => {
+                    connection.cursor_sender.send_replace(Some(payload.clone()));
                 }
+                LiveDataKind::ForegroundApp => {
+                    connection
+                        .foreground_app_sender
+                        .send_replace(Some(payload.clone()));
+                }
+            }
+        }
+    }
+
+    fn preferred_remote(
+        &self,
+        friend_id: &str,
+        incoming_remote_id: Option<&str>,
+    ) -> Option<String> {
+        let mut remote_ids = self.friend_presence.remotes_for(friend_id).ok()?;
+        if let Some(remote_id) = incoming_remote_id {
+            remote_ids.insert(remote_id.to_owned());
+        }
+        let connections = self.connections.lock().ok()?;
+        let priorities = connections
+            .iter()
+            .map(|(remote_id, connection)| (remote_id.clone(), connection.remote.priority))
+            .collect();
+        routing::preferred_remote(&remote_ids, &priorities)
+    }
+
+    pub(super) fn accept_source(&self, remote_id: &str, friend_id: &str) -> bool {
+        self.preferred_remote(friend_id, Some(remote_id))
+            .is_some_and(|preferred| preferred == remote_id)
+    }
+
+    fn receive_live_data(&self, handle: &AppHandle, friend_id: String, payload: &str) {
+        let envelope = match serde_json::from_str::<LiveDataEnvelope>(payload) {
+            Ok(envelope) => envelope,
+            Err(error) => {
+                eprintln!("failed to decode friend live data: {error}");
+                return;
+            }
+        };
+        match self.received_sequences.accept(&friend_id, &envelope) {
+            Ok(true) => {}
+            Ok(false) => return,
+            Err(error) => {
+                eprintln!("failed to track friend live data: {error}");
+                return;
+            }
+        }
+        match envelope.data {
+            LiveData::Cursor { positions } => {
+                crate::cursor::emit_position(handle, friend_id, positions);
+            }
+            LiveData::ForegroundApp { meta } => {
+                crate::ufa::emit_friend_app(handle, friend_id, meta);
             }
         }
     }
 
     pub fn update_profile(&self, profile: crate::user::User) {
         self.profile.send_replace(profile);
+    }
+
+    fn ordered_senders(&self, friend_id: Option<&str>) -> Result<Vec<ConnectionSenders>, String> {
+        let routes = friend_id
+            .map(|friend_id| self.friend_presence.remotes_for(friend_id))
+            .transpose()?
+            .unwrap_or_default();
+        let connections = self.connections.lock().map_err(|error| error.to_string())?;
+        let statuses = self.statuses.lock().map_err(|error| error.to_string())?;
+        let mut senders = connections
+            .values()
+            .filter(|connection| {
+                statuses
+                    .get(&connection.remote.id)
+                    .is_some_and(|(_, status)| status.state == ConnectionState::Connected)
+            })
+            .filter(|connection| routes.is_empty() || routes.contains(&connection.remote.id))
+            .map(|connection| ConnectionSenders {
+                remote_id: connection.remote.id.clone(),
+                priority: connection.remote.priority,
+                interaction: connection.interaction_sender.clone(),
+                profile_lookup: connection.profile_lookup_sender.clone(),
+                skin_lookup: connection.skin_lookup_sender.clone(),
+            })
+            .collect::<Vec<_>>();
+        senders.sort_by(|left, right| {
+            (left.priority, &left.remote_id).cmp(&(right.priority, &right.remote_id))
+        });
+        Ok(senders)
     }
 
     pub async fn send_interaction(
@@ -113,18 +219,13 @@ impl Network {
         }
         let payload = serde_json::to_string(&content).map_err(|error| error.to_string())?;
         let interaction_id = uuid::Uuid::new_v4().to_string();
-        let senders: Vec<_> = self
-            .connections
-            .lock()
-            .map_err(|error| error.to_string())?
-            .values()
-            .map(|connection| connection.interaction_sender.clone())
-            .collect();
+        let senders = self.ordered_senders(Some(&recipient_id))?;
         if senders.is_empty() {
-            return Err("No relay connections are configured".to_owned());
+            return Err("No connected relay can currently reach this friend".to_owned());
         }
 
-        let mut responses = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let mut statuses = Vec::new();
         for sender in senders {
             let (response, receiver) = oneshot::channel();
             let request = InteractionRequest {
@@ -133,20 +234,15 @@ impl Network {
                 payload: payload.clone(),
                 response,
             };
-            if sender.try_send(request).is_ok() {
-                responses.push(receiver);
+            if sender.interaction.try_send(request).is_err() {
+                continue;
             }
-        }
-        if responses.is_empty() {
-            return Err("Relay connections are busy or disconnected".to_owned());
-        }
-
-        let mut pending: FuturesUnordered<_> = responses
-            .into_iter()
-            .map(|response| tokio::time::timeout(Duration::from_secs(5), response))
-            .collect();
-        let mut statuses = Vec::new();
-        while let Some(result) = pending.next().await {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            let result =
+                tokio::time::timeout(remaining.min(Duration::from_secs(2)), receiver).await;
             if let Ok(Ok(status)) = result {
                 if status == InteractionDeliveryStatus::Delivered {
                     return Ok(());
@@ -169,15 +265,9 @@ impl Network {
             return Err("You cannot add your own identification key.".to_owned());
         }
 
-        let senders: Vec<_> = self
-            .connections
-            .lock()
-            .map_err(|error| error.to_string())?
-            .values()
-            .map(|connection| connection.profile_lookup_sender.clone())
-            .collect();
+        let senders = self.ordered_senders(None)?;
         let request_id = uuid::Uuid::new_v4().to_string();
-        let mut responses = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
         for sender in senders {
             let (response, receiver) = oneshot::channel();
             let request = ProfileLookupRequest {
@@ -185,16 +275,15 @@ impl Network {
                 user_id: user_id.clone(),
                 response,
             };
-            if sender.try_send(request).is_ok() {
-                responses.push(receiver);
+            if sender.profile_lookup.try_send(request).is_err() {
+                continue;
             }
-        }
-
-        let mut pending: FuturesUnordered<_> = responses
-            .into_iter()
-            .map(|response| tokio::time::timeout(Duration::from_secs(3), response))
-            .collect();
-        while let Some(result) = pending.next().await {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            let result =
+                tokio::time::timeout(remaining.min(Duration::from_secs(1)), receiver).await;
             if let Ok(Ok(Some(display_name))) = result {
                 return Ok(Some(display_name));
             }
@@ -211,35 +300,29 @@ impl Network {
             return Ok(None);
         }
 
-        let senders: Vec<_> = self
-            .connections
-            .lock()
-            .map_err(|error| error.to_string())?
-            .values()
-            .map(|connection| connection.skin_lookup_sender.clone())
-            .collect();
+        let senders = self.ordered_senders(Some(&user_id))?;
         let request_id = uuid::Uuid::new_v4().to_string();
-        let mut responses = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
         for sender in senders {
             let (response, receiver) = oneshot::channel();
             if sender
+                .skin_lookup
                 .try_send(SkinLookupRequest {
                     request_id: request_id.clone(),
                     user_id: user_id.clone(),
                     skin_hash: skin_hash.clone(),
                     response,
                 })
-                .is_ok()
+                .is_err()
             {
-                responses.push(receiver);
+                continue;
             }
-        }
-
-        let mut pending: FuturesUnordered<_> = responses
-            .into_iter()
-            .map(|response| tokio::time::timeout(Duration::from_secs(3), response))
-            .collect();
-        while let Some(result) = pending.next().await {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            let result =
+                tokio::time::timeout(remaining.min(Duration::from_secs(1)), receiver).await;
             if let Ok(Ok(Some(data))) = result
                 && let Some(bytes) = crate::skins::decode_response(&data, &skin_hash)
             {
@@ -258,7 +341,11 @@ impl Network {
 
         let stale: Vec<_> = connections
             .iter()
-            .filter(|(id, connection)| desired.get(*id) != Some(&connection.remote))
+            .filter(|(id, connection)| {
+                desired
+                    .get(*id)
+                    .is_none_or(|remote| !same_connection_configuration(remote, &connection.remote))
+            })
             .map(|(id, _)| id.clone())
             .collect();
         let mut presence_changes = Vec::new();
@@ -271,13 +358,17 @@ impl Network {
             }
         }
 
+        let mut priority_changed = false;
         for remote in desired.into_values() {
-            if connections.contains_key(&remote.id) {
+            if let Some(connection) = connections.get_mut(&remote.id) {
+                priority_changed |= connection.remote.priority != remote.priority;
+                connection.remote = remote;
                 continue;
             }
 
             let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
-            let (sender, receiver) = mpsc::channel(32);
+            let (cursor_sender, cursor_receiver) = watch::channel(None);
+            let (foreground_app_sender, foreground_app_receiver) = watch::channel(None);
             let (interaction_sender, interaction_receiver) = mpsc::channel(16);
             let (profile_lookup_sender, profile_lookup_receiver) = mpsc::channel(16);
             let (skin_lookup_sender, skin_lookup_receiver) = mpsc::channel(16);
@@ -297,7 +388,8 @@ impl Network {
                     profiles: self.profile.subscribe(),
                     friends: self.friends.subscribe(),
                     keypair: self.keypair.clone(),
-                    live_data: receiver,
+                    cursor_data: cursor_receiver,
+                    foreground_app_data: foreground_app_receiver,
                     interactions: interaction_receiver,
                     profile_lookups: profile_lookup_receiver,
                     skin_lookups: skin_lookup_receiver,
@@ -307,7 +399,8 @@ impl Network {
                 remote.id.clone(),
                 Connection {
                     remote,
-                    sender,
+                    cursor_sender,
+                    foreground_app_sender,
                     interaction_sender,
                     profile_lookup_sender,
                     skin_lookup_sender,
@@ -320,6 +413,9 @@ impl Network {
         drop(connections);
         for change in presence_changes {
             apply_friend_presence_change(handle, change);
+        }
+        if priority_changed && let Err(error) = crate::live_data::publish_current(handle) {
+            eprintln!("failed to republish live data after server reorder: {error}");
         }
         emit_statuses(handle, &self.statuses)
     }
@@ -340,6 +436,10 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         friends,
         keypair,
         next_generation: AtomicU64::new(1),
+        live_session_id: uuid::Uuid::new_v4().to_string(),
+        next_cursor_sequence: AtomicU64::new(1),
+        next_foreground_app_sequence: AtomicU64::new(1),
+        received_sequences: SequenceTracker::default(),
     };
     handle.manage(network);
     handle
@@ -365,6 +465,9 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             *current = ids.clone();
             true
         });
+        if let Err(error) = network.received_sequences.retain(&ids) {
+            eprintln!("failed to prune live-data sequences: {error}");
+        }
         apply_friend_presence_change(&listener_handle, network.friend_presence.retain(&ids));
     });
     Ok(())
@@ -423,15 +526,16 @@ fn apply_friend_presence_change(
             {
                 eprintln!("failed to remove offline foreground apps: {error}");
             }
-            if !change.came_online.is_empty()
+            if change.route_added
                 && let Err(error) = crate::live_data::publish_current(handle)
             {
                 eprintln!("failed to publish current live data: {error}");
             }
-            if let Err(error) = (FriendStatusesChanged {
-                friend_ids: change.online,
-            })
-            .emit(handle)
+            if change.online_changed
+                && let Err(error) = (FriendStatusesChanged {
+                    friend_ids: change.online,
+                })
+                .emit(handle)
             {
                 eprintln!("failed to emit friend statuses: {error}");
             }
@@ -520,6 +624,13 @@ fn friend_ids(friends: Vec<crate::friends::Friend>, own_id: &str) -> Vec<String>
     ids.sort_unstable();
     ids.dedup();
     ids
+}
+
+fn same_connection_configuration(left: &Remote, right: &Remote) -> bool {
+    left.id == right.id
+        && left.address == right.address
+        && left.name == right.name
+        && left.port == right.port
 }
 
 #[cfg(test)]

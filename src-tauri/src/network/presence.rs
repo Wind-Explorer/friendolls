@@ -6,19 +6,30 @@ pub(super) struct Change {
     pub(super) online: Vec<String>,
     pub(super) came_online: Vec<String>,
     pub(super) went_offline: Vec<String>,
+    pub(super) online_changed: bool,
+    pub(super) route_added: bool,
 }
 
 #[derive(Default)]
 pub(super) struct FriendPresence(Mutex<HashMap<String, HashSet<String>>>);
 
 impl FriendPresence {
+    pub(super) fn remotes_for(&self, friend_id: &str) -> Result<HashSet<String>, String> {
+        let by_remote = self.0.lock().map_err(|error| error.to_string())?;
+        Ok(by_remote
+            .iter()
+            .filter(|(_, friend_ids)| friend_ids.contains(friend_id))
+            .map(|(remote_id, _)| remote_id.clone())
+            .collect())
+    }
+
     pub(super) fn replace(
         &self,
         remote_id: &str,
         friend_ids: Vec<String>,
     ) -> Result<Option<Change>, String> {
         let mut by_remote = self.0.lock().map_err(|error| error.to_string())?;
-        let before = aggregate(&by_remote);
+        let before = by_remote.clone();
         let friend_ids = friend_ids.into_iter().collect::<HashSet<_>>();
         if friend_ids.is_empty() {
             by_remote.remove(remote_id);
@@ -35,7 +46,7 @@ impl FriendPresence {
         online: bool,
     ) -> Result<Option<Change>, String> {
         let mut by_remote = self.0.lock().map_err(|error| error.to_string())?;
-        let before = aggregate(&by_remote);
+        let before = by_remote.clone();
         if online {
             by_remote
                 .entry(remote_id.to_owned())
@@ -52,7 +63,7 @@ impl FriendPresence {
 
     pub(super) fn remove(&self, remote_id: &str) -> Result<Option<Change>, String> {
         let mut by_remote = self.0.lock().map_err(|error| error.to_string())?;
-        let before = aggregate(&by_remote);
+        let before = by_remote.clone();
         by_remote.remove(remote_id);
         Ok(diff(before, &by_remote))
     }
@@ -60,7 +71,7 @@ impl FriendPresence {
     pub(super) fn retain(&self, known_friend_ids: &[String]) -> Result<Option<Change>, String> {
         let known_friend_ids = known_friend_ids.iter().collect::<HashSet<_>>();
         let mut by_remote = self.0.lock().map_err(|error| error.to_string())?;
-        let before = aggregate(&by_remote);
+        let before = by_remote.clone();
         by_remote.retain(|_, friend_ids| {
             friend_ids.retain(|friend_id| known_friend_ids.contains(friend_id));
             !friend_ids.is_empty()
@@ -83,11 +94,21 @@ fn aggregate(by_remote: &HashMap<String, HashSet<String>>) -> HashSet<String> {
         .collect()
 }
 
-fn diff(before: HashSet<String>, by_remote: &HashMap<String, HashSet<String>>) -> Option<Change> {
-    let after = aggregate(by_remote);
-    if before == after {
+fn diff(
+    before_by_remote: HashMap<String, HashSet<String>>,
+    by_remote: &HashMap<String, HashSet<String>>,
+) -> Option<Change> {
+    if before_by_remote == *by_remote {
         return None;
     }
+    let before = aggregate(&before_by_remote);
+    let after = aggregate(by_remote);
+    let online_changed = before != after;
+    let route_added = by_remote.iter().any(|(remote_id, friend_ids)| {
+        before_by_remote
+            .get(remote_id)
+            .is_none_or(|before| !friend_ids.is_subset(before))
+    });
     let mut went_offline = before.difference(&after).cloned().collect::<Vec<_>>();
     let mut came_online = after.difference(&before).cloned().collect::<Vec<_>>();
     let mut online = after.into_iter().collect::<Vec<_>>();
@@ -98,6 +119,8 @@ fn diff(before: HashSet<String>, by_remote: &HashMap<String, HashSet<String>>) -
         online,
         came_online,
         went_offline,
+        online_changed,
+        route_added,
     })
 }
 
@@ -116,21 +139,40 @@ mod tests {
                 online: vec!["friend".to_owned()],
                 came_online: vec!["friend".to_owned()],
                 went_offline: Vec::new(),
+                online_changed: true,
+                route_added: true,
             })
         );
-        assert!(
+        assert_eq!(
             presence
                 .replace("remote-b", vec!["friend".to_owned()])
-                .unwrap()
-                .is_none()
+                .unwrap(),
+            Some(Change {
+                online: vec!["friend".to_owned()],
+                came_online: Vec::new(),
+                went_offline: Vec::new(),
+                online_changed: false,
+                route_added: true,
+            })
         );
-        assert!(presence.remove("remote-a").unwrap().is_none());
+        assert_eq!(
+            presence.remove("remote-a").unwrap(),
+            Some(Change {
+                online: vec!["friend".to_owned()],
+                came_online: Vec::new(),
+                went_offline: Vec::new(),
+                online_changed: false,
+                route_added: false,
+            })
+        );
         assert_eq!(
             presence.remove("remote-b").unwrap(),
             Some(Change {
                 online: Vec::new(),
                 came_online: Vec::new(),
                 went_offline: vec!["friend".to_owned()],
+                online_changed: true,
+                route_added: false,
             })
         );
     }

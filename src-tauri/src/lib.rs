@@ -73,6 +73,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             remotes::get_remote,
             remotes::update_remote,
             remotes::delete_remote,
+            remotes::reorder_remotes,
             profile::get_profile,
             profile::update_profile,
             profile::reset_profile_skin,

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-pub const VERSION: u8 = 3;
+pub const VERSION: u8 = 4;
 pub const MAX_INTERACTION_PAYLOAD_BYTES: usize = 160 * 1024;
 pub const MAX_IMAGE_B64_SIZE: usize = 150 * 1024;
 pub const MAX_SKIN_B64_SIZE: usize = 96 * 1024;

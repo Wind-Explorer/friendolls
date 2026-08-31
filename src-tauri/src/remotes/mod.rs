@@ -12,6 +12,7 @@ pub struct Remote {
     pub address: String,
     pub name: Option<String>,
     pub port: Option<u16>,
+    pub priority: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -30,35 +31,42 @@ pub struct RemotesChanged {
 
 pub async fn all(database: &AppDatabase) -> Result<Vec<Remote>, sqlx::Error> {
     sqlx::query_as::<_, Remote>(
-        "SELECT id, address, name, port FROM remotes \
-         ORDER BY COALESCE(name, address) COLLATE NOCASE, id",
+        "SELECT id, address, name, port, priority FROM remotes \
+         ORDER BY priority, id",
     )
     .fetch_all(database.pool())
     .await
 }
 
 async fn get(database: &AppDatabase, id: &str) -> Result<Option<Remote>, sqlx::Error> {
-    sqlx::query_as::<_, Remote>("SELECT id, address, name, port FROM remotes WHERE id = ?1")
-        .bind(id)
-        .fetch_optional(database.pool())
-        .await
+    sqlx::query_as::<_, Remote>(
+        "SELECT id, address, name, port, priority FROM remotes WHERE id = ?1",
+    )
+    .bind(id)
+    .fetch_optional(database.pool())
+    .await
 }
 
 async fn insert(database: &AppDatabase, input: RemoteInput) -> Result<Remote, sqlx::Error> {
+    let id = Uuid::new_v4().to_string();
+    let priority = sqlx::query_scalar::<_, i32>(
+        "INSERT INTO remotes (id, address, name, port, priority) \
+         SELECT ?1, ?2, ?3, ?4, COALESCE(MAX(priority) + 1, 0) FROM remotes \
+         RETURNING priority",
+    )
+    .bind(&id)
+    .bind(&input.address)
+    .bind(&input.name)
+    .bind(input.port)
+    .fetch_one(database.pool())
+    .await?;
     let remote = Remote {
-        id: Uuid::new_v4().to_string(),
+        id,
         address: input.address,
         name: input.name,
         port: input.port,
+        priority,
     };
-
-    sqlx::query("INSERT INTO remotes (id, address, name, port) VALUES (?1, ?2, ?3, ?4)")
-        .bind(&remote.id)
-        .bind(&remote.address)
-        .bind(&remote.name)
-        .bind(remote.port)
-        .execute(database.pool())
-        .await?;
 
     Ok(remote)
 }
@@ -80,12 +88,41 @@ async fn update(
         return Ok(None);
     }
 
-    Ok(Some(Remote {
-        id: id.to_owned(),
-        address: input.address,
-        name: input.name,
-        port: input.port,
-    }))
+    get(database, id).await
+}
+
+async fn reorder(database: &AppDatabase, ids: &[String]) -> Result<bool, String> {
+    let existing = all(database).await.map_err(db::command_error)?;
+    if ids.len() != existing.len() {
+        return Err("Server order must contain every configured server exactly once".to_owned());
+    }
+
+    let mut expected = existing
+        .into_iter()
+        .map(|remote| remote.id)
+        .collect::<Vec<_>>();
+    let mut provided = ids.to_vec();
+    expected.sort_unstable();
+    provided.sort_unstable();
+    provided.dedup();
+    if provided != expected {
+        return Err("Server order contains an unknown or duplicate server".to_owned());
+    }
+
+    let mut transaction = database.pool().begin().await.map_err(db::command_error)?;
+    let mut changed = false;
+    for (priority, id) in ids.iter().enumerate() {
+        let result =
+            sqlx::query("UPDATE remotes SET priority = ?1 WHERE id = ?2 AND priority != ?1")
+                .bind(priority as i32)
+                .bind(id)
+                .execute(&mut *transaction)
+                .await
+                .map_err(db::command_error)?;
+        changed |= result.rows_affected() > 0;
+    }
+    transaction.commit().await.map_err(db::command_error)?;
+    Ok(changed)
 }
 
 async fn delete(database: &AppDatabase, id: &str) -> Result<bool, sqlx::Error> {
@@ -178,6 +215,19 @@ pub async fn delete_remote(
     Ok(changed)
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn reorder_remotes(
+    handle: AppHandle,
+    database: State<'_, AppDatabase>,
+    ids: Vec<String>,
+) -> Result<Vec<Remote>, String> {
+    if reorder(&database, &ids).await? {
+        emit_changed(&handle, &database).await?;
+    }
+    all(&database).await.map_err(db::command_error)
+}
+
 #[cfg(test)]
 mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
@@ -216,6 +266,7 @@ mod tests {
         assert_eq!(remote.address, "play.example.com");
         assert_eq!(remote.name, None);
         assert_eq!(remote.port, None);
+        assert_eq!(remote.priority, 0);
         assert_eq!(get(&database, &remote.id).await.unwrap(), Some(remote));
     }
 
@@ -250,6 +301,7 @@ mod tests {
         assert_eq!(updated.address, "new.example.com");
         assert_eq!(updated.name.as_deref(), Some("New name"));
         assert_eq!(updated.port, None);
+        assert_eq!(updated.priority, created.priority);
         assert_eq!(all(&database).await.unwrap(), vec![updated.clone()]);
         assert!(delete(&database, &updated.id).await.unwrap());
         assert!(!delete(&database, &updated.id).await.unwrap());
@@ -273,5 +325,58 @@ mod tests {
         .expect("update query succeeds");
 
         assert_eq!(updated, None);
+    }
+
+    #[tokio::test]
+    async fn reorder_validates_and_persists_the_complete_priority_order() {
+        let database = database().await;
+        let first = insert(
+            &database,
+            RemoteInput {
+                address: "first.example.com".to_owned(),
+                name: None,
+                port: None,
+            },
+        )
+        .await
+        .unwrap();
+        let second = insert(
+            &database,
+            RemoteInput {
+                address: "second.example.com".to_owned(),
+                name: None,
+                port: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            reorder(&database, &[second.id.clone(), first.id.clone()])
+                .await
+                .unwrap()
+        );
+        let ordered = all(&database).await.unwrap();
+        assert_eq!(
+            ordered.iter().map(|remote| &remote.id).collect::<Vec<_>>(),
+            [&second.id, &first.id]
+        );
+        assert_eq!(
+            ordered
+                .iter()
+                .map(|remote| remote.priority)
+                .collect::<Vec<_>>(),
+            [0, 1]
+        );
+        assert!(
+            !reorder(&database, &[second.id.clone(), first.id.clone()])
+                .await
+                .unwrap()
+        );
+        assert!(
+            reorder(&database, std::slice::from_ref(&first.id))
+                .await
+                .is_err()
+        );
     }
 }
