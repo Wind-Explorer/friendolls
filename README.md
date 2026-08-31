@@ -1,7 +1,12 @@
-# Tauri + SvelteKit + TypeScript
+# Friendolls
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+Run around with your friends on your screen!
 
-## Recommended IDE Setup
+Friendolls let you and your friends passively accompany each other as little puppets on your screen. Each puppet is controlled by the owner's cursor.
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+Quickly & ephemerally interact with your friends through the puppets! Say hi, drop a meme screenshot, or simply wave with the wave button.
+
+## Technical requirements
+
+- Windows / macOS client device
+- Relay server! Connect to a community server or host your own.
