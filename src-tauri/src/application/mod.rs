@@ -15,7 +15,7 @@ pub async fn init(handle: &AppHandle) -> Result<(), String> {
         .map_err(crate::db::command_error)?;
 
     if settings.onboarding_done {
-        start(handle);
+        start(handle).await;
         if cfg!(target_os = "macos") && !accessibility_permission_granted {
             crate::ui::onboarding::show_accessibility_page(handle)?;
         }
@@ -25,7 +25,7 @@ pub async fn init(handle: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub fn start(handle: &AppHandle) {
+pub async fn start(handle: &AppHandle) {
     let state = handle.state::<ApplicationState>();
     if state
         .started
@@ -36,7 +36,7 @@ pub fn start(handle: &AppHandle) {
     }
 
     crate::ui::init(handle);
-    reconcile_cursor(handle);
+    reconcile_cursor(handle).await;
 }
 
 pub fn is_started(handle: &AppHandle) -> bool {
@@ -46,12 +46,12 @@ pub fn is_started(handle: &AppHandle) -> bool {
         .load(Ordering::Acquire)
 }
 
-pub fn reconcile_cursor(handle: &AppHandle) {
+pub async fn reconcile_cursor(handle: &AppHandle) {
     if !is_started(handle) || !crate::macos::accessibility_permission_granted(handle) {
         return;
     }
 
-    if let Err(error) = crate::cursor::start_tracking(handle) {
-        eprintln!("failed to initialize cursor tracking; will retry: {error}");
+    if let Err(error) = crate::cursor::start_tracking(handle).await {
+        eprintln!("failed to initialize cursor tracking: {error}");
     }
 }

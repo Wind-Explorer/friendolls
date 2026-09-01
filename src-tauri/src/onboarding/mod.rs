@@ -84,7 +84,7 @@ pub async fn complete_onboarding(
         .await
         .map_err(db::command_error)?;
     emit_status(&handle, &database).await?;
-    crate::application::start(&handle);
+    crate::application::start(&handle).await;
     Ok(())
 }
 

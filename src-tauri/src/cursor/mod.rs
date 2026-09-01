@@ -8,8 +8,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
-use tokio::sync::mpsc;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, oneshot, watch};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Type)]
 #[serde(rename_all = "camelCase")]
@@ -104,13 +103,18 @@ fn current_position(handle: &AppHandle) -> Result<CursorPositions, String> {
 // complains even when there's no external references.
 // Possibly because of `lazy_static!`.
 // Just leave it public I guess.
-pub struct CursorTask {
+struct CursorTask {
     stop_tx: watch::Sender<bool>,
     task: tauri::async_runtime::JoinHandle<()>,
 }
 
+enum CursorTracker {
+    Starting,
+    Running(CursorTask),
+}
+
 lazy_static! {
-    pub static ref CURSOR_TASK: Mutex<Option<CursorTask>> = Mutex::new(None);
+    static ref CURSOR_TRACKER: Mutex<Option<CursorTracker>> = Mutex::new(None);
 }
 
 pub fn init(app: &AppHandle) {
@@ -118,47 +122,71 @@ pub fn init(app: &AppHandle) {
 }
 
 /// Starts cursor tracking after Accessibility permission is available.
-pub fn start_tracking(app: &AppHandle) -> Result<(), String> {
-    println!("init_cursor_tracking called");
-
+pub async fn start_tracking(app: &AppHandle) -> Result<(), String> {
     if !crate::macos::accessibility_permission_granted(app) {
         return Err("macOS Accessibility permission has not been granted".to_owned());
     }
-
-    let mut tracker = match CURSOR_TASK.lock() {
-        Ok(tracker) => tracker,
-        Err(e) => {
-            return Err(format!("Failed to lock cursor tracker state: {e}"));
-        }
-    };
-
-    if tracker.is_some() {
-        println!("Cursor tracking already initialized");
-        return Ok(());
-    }
-
-    match current_position(app) {
-        Ok(positions) => update_cursor_position(app, positions),
-        Err(error) => eprintln!("Failed to resolve current cursor position: {error}"),
-    }
-
-    let (stop_tx, stop_rx) = watch::channel(false);
-
-    println!("Spawning cursor tracking task");
 
     let primary_monitor = app
         .primary_monitor()
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "Failed to resolve primary monitor".to_owned())?;
 
+    {
+        let mut tracker = CURSOR_TRACKER
+            .lock()
+            .map_err(|error| format!("Failed to lock cursor tracker state: {error}"))?;
+        if tracker.is_some() {
+            return Ok(());
+        }
+        *tracker = Some(CursorTracker::Starting);
+    }
+
+    println!("Initializing cursor tracking...");
+    match current_position(app) {
+        Ok(positions) => update_cursor_position(app, positions),
+        Err(error) => eprintln!("Failed to resolve current cursor position: {error}"),
+    }
+
+    let (stop_tx, stop_rx) = watch::channel(false);
+    let (ready_tx, ready_rx) = oneshot::channel();
+
     let handle = app.clone();
     let task = tauri::async_runtime::spawn(async move {
-        if let Err(e) = init_cursor_tracking_i(stop_rx, primary_monitor, handle).await {
+        if let Err(e) = init_cursor_tracking_i(stop_rx, primary_monitor, handle, ready_tx).await {
             println!("Failed to initialize cursor tracking: {}", e);
         }
     });
 
-    *tracker = Some(CursorTask { stop_tx, task });
+    let startup = ready_rx
+        .await
+        .unwrap_or_else(|_| Err("Cursor tracking task stopped during initialization".to_owned()));
+    if let Err(error) = startup {
+        if let Ok(mut tracker) = CURSOR_TRACKER.lock()
+            && matches!(*tracker, Some(CursorTracker::Starting))
+        {
+            *tracker = None;
+        }
+        let _ = task.await;
+        return Err(error);
+    }
+
+    let installed = {
+        let mut tracker = CURSOR_TRACKER
+            .lock()
+            .map_err(|error| format!("Failed to lock cursor tracker state: {error}"))?;
+        if matches!(*tracker, Some(CursorTracker::Starting)) {
+            *tracker = Some(CursorTracker::Running(CursorTask { stop_tx, task }));
+            true
+        } else {
+            false
+        }
+    };
+
+    if !installed {
+        return Err("Cursor tracking startup was cancelled".to_owned());
+    }
+
     println!("EVENT: Cursor Tracker Enabled");
     Ok(())
 }
@@ -297,7 +325,7 @@ mod tests {
 pub async fn stop_cursor_tracking() {
     println!("stop_cursor_tracking called");
 
-    let tracker = match CURSOR_TASK.lock() {
+    let tracker = match CURSOR_TRACKER.lock() {
         Ok(mut tracker) => tracker.take(),
         Err(e) => {
             println!("Failed to lock cursor tracker state: {}", e);
@@ -305,9 +333,16 @@ pub async fn stop_cursor_tracking() {
         }
     };
 
-    let Some(tracker) = tracker else {
-        println!("Cursor tracking is not running");
-        return;
+    let tracker = match tracker {
+        Some(CursorTracker::Running(tracker)) => tracker,
+        Some(CursorTracker::Starting) => {
+            println!("Cursor tracking startup cancelled");
+            return;
+        }
+        None => {
+            println!("Cursor tracking is not running");
+            return;
+        }
     };
 
     if let Err(e) = tracker.stop_tx.send(true) {
@@ -325,9 +360,8 @@ async fn init_cursor_tracking_i(
     mut stop_rx: watch::Receiver<bool>,
     monitor: tauri::Monitor,
     handle: AppHandle,
+    ready_tx: oneshot::Sender<Result<(), String>>,
 ) -> Result<(), String> {
-    println!("Initializing cursor tracking...");
-
     // Create a channel to decouple event generation (producer) from processing (consumer).
     // Capacity 100 is plenty for 500ms polling (2Hz).
     let (tx, mut rx) = mpsc::channel::<CursorPositions>(100);
@@ -345,8 +379,14 @@ async fn init_cursor_tracking_i(
         println!("Cursor event consumer stopped (channel closed)");
     });
 
-    let device_state = DeviceEventsHandler::new(Duration::from_millis(500))
-        .ok_or("Failed to create device event handler (already running?)")?;
+    let device_state = match DeviceEventsHandler::new(Duration::from_millis(500)) {
+        Some(device_state) => device_state,
+        None => {
+            let error = "Failed to create device event handler (already running?)".to_owned();
+            let _ = ready_tx.send(Err(error.clone()));
+            return Err(error);
+        }
+    };
 
     println!("Device event handler created successfully");
     println!("Setting up mouse move handler for event broadcasting...");
@@ -383,6 +423,9 @@ async fn init_cursor_tracking_i(
         }
     });
 
+    ready_tx
+        .send(Ok(()))
+        .map_err(|_| "Cursor tracking startup was cancelled".to_owned())?;
     println!("Mouse move handler registered - now broadcasting cursor events to all windows");
 
     // Keep the handler alive while tracking is enabled.

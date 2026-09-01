@@ -49,11 +49,6 @@ pub fn accessibility_permission_granted(handle: &AppHandle) -> bool {
 }
 
 async fn apply_permission_state(handle: &AppHandle, granted: bool) -> Result<bool, String> {
-    if handle.state::<AccessibilityPermissionState>().granted() == granted {
-        crate::application::reconcile_cursor(handle);
-        return Ok(false);
-    }
-
     if !handle
         .state::<AccessibilityPermissionState>()
         .replace(granted)
@@ -64,7 +59,7 @@ async fn apply_permission_state(handle: &AppHandle, granted: bool) -> Result<boo
     let status = crate::onboarding::emit_status(handle, &database).await?;
     if status.onboarding_done {
         if granted {
-            crate::application::reconcile_cursor(handle);
+            crate::application::reconcile_cursor(handle).await;
         } else {
             crate::ui::onboarding::show_accessibility_page(handle)?;
         }
@@ -105,4 +100,19 @@ pub async fn request_accessibility_permission(handle: AppHandle) -> Result<bool,
         .map_err(|error| error.to_string())?;
     apply_permission_state(&handle, granted).await?;
     Ok(granted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permission_state_reports_only_actual_transitions() {
+        let state = AccessibilityPermissionState::new(false);
+
+        assert!(!state.replace(false));
+        assert!(state.replace(true));
+        assert!(!state.replace(true));
+        assert!(state.replace(false));
+    }
 }
