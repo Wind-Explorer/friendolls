@@ -77,7 +77,10 @@ fn current_position(handle: &AppHandle) -> Result<CursorPositions, String> {
         .primary_monitor()
         .map_err(|error| error.to_string())?
         .ok_or("Primary monitor is unavailable")?;
-    let position = DeviceState::new().get_mouse().coords;
+    let position = DeviceState::checked_new()
+        .ok_or_else(|| "System cursor access is unavailable".to_owned())?
+        .get_mouse()
+        .coords;
 
     #[cfg(target_os = "windows")]
     let raw = CursorPosition {
@@ -111,20 +114,23 @@ lazy_static! {
 }
 
 /// Initialize cursor tracking.
-pub fn init(app: &AppHandle) {
+pub fn init(app: &AppHandle) -> Result<(), String> {
     println!("init_cursor_tracking called");
+
+    if !crate::macos::accessibility_permission_granted(app) {
+        return Err("macOS Accessibility permission has not been granted".to_owned());
+    }
 
     let mut tracker = match CURSOR_TASK.lock() {
         Ok(tracker) => tracker,
         Err(e) => {
-            println!("Failed to lock cursor tracker state: {}", e);
-            return;
+            return Err(format!("Failed to lock cursor tracker state: {e}"));
         }
     };
 
     if tracker.is_some() {
         println!("Cursor tracking already initialized");
-        return;
+        return Ok(());
     }
 
     match current_position(app) {
@@ -138,8 +144,8 @@ pub fn init(app: &AppHandle) {
 
     let primary_monitor = app
         .primary_monitor()
-        .expect("Failed to resolve primary monitor")
-        .expect("Failed to resolve primary monitor");
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "Failed to resolve primary monitor".to_owned())?;
 
     let handle = app.clone();
     let task = tauri::async_runtime::spawn(async move {
@@ -150,6 +156,7 @@ pub fn init(app: &AppHandle) {
 
     *tracker = Some(CursorTask { stop_tx, task });
     println!("EVENT: Cursor Tracker Enabled");
+    Ok(())
 }
 
 #[inline]
@@ -320,6 +327,7 @@ async fn init_cursor_tracking_i(
     // Create a channel to decouple event generation (producer) from processing (consumer).
     // Capacity 100 is plenty for 500ms polling (2Hz).
     let (tx, mut rx) = mpsc::channel::<CursorPositions>(100);
+    let permission_handle = handle.clone();
 
     // Spawn the consumer task
     // This task handles WebSocket reporting and local position projection updates.
@@ -345,6 +353,10 @@ async fn init_cursor_tracking_i(
     // The producer closure moves `tx` into it.
     // device_query runs this closure on its own thread.
     let _guard = device_state.on_mouse_move(move |position: &(i32, i32)| {
+        if !crate::macos::accessibility_permission_granted(&permission_handle) {
+            return;
+        }
+
         #[cfg(target_os = "windows")]
         let raw = CursorPosition {
             x: position.0 as f64,

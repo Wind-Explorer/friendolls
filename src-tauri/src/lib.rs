@@ -1,3 +1,4 @@
+mod application;
 mod cursor;
 mod db;
 mod friends;
@@ -5,7 +6,9 @@ mod images;
 mod interactions;
 mod keypair;
 mod live_data;
+mod macos;
 mod network;
+mod onboarding;
 mod profile;
 mod puppet;
 mod remotes;
@@ -30,9 +33,8 @@ async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> 
     app.manage(puppet::PuppetStateStore::default());
     network::init(handle).await?;
     ufa::init(handle);
-    cursor::init(handle);
     puppet::init(handle)?;
-    ui::init(handle);
+    application::init(handle).await?;
     Ok(())
 }
 
@@ -92,6 +94,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             puppet::list_puppet_states,
             scene_configuration::get_scene_configuration,
             scene_configuration::update_scene_configuration,
+            onboarding::get_onboarding_status,
+            onboarding::complete_onboarding,
+            macos::request_accessibility_permission,
             ui::control_panel::open_action_window,
             ui::scene::update_scene_hitboxes,
         ])
@@ -107,6 +112,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             interactions::FriendInteractionReceived,
             puppet::PuppetStatesChanged,
             scene_configuration::SceneConfigurationChanged,
+            onboarding::OnboardingStatus,
         ])
 }
 

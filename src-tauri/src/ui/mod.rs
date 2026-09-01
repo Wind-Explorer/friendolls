@@ -3,6 +3,7 @@ use tauri::AppHandle;
 pub mod control_panel;
 #[cfg(debug_assertions)]
 mod debug;
+pub mod onboarding;
 pub mod scene;
 mod tray;
 

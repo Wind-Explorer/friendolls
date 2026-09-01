@@ -1,0 +1,57 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use tauri::{AppHandle, Manager};
+
+#[derive(Default)]
+struct ApplicationState {
+    started: AtomicBool,
+}
+
+pub async fn init(handle: &AppHandle) -> Result<(), String> {
+    handle.manage(ApplicationState::default());
+    let accessibility_permission_granted = crate::macos::init(handle).await?;
+    let settings = crate::onboarding::get(&handle.state())
+        .await
+        .map_err(crate::db::command_error)?;
+
+    if settings.onboarding_done {
+        start(handle);
+        if cfg!(target_os = "macos") && !accessibility_permission_granted {
+            crate::ui::onboarding::show_accessibility_page(handle)?;
+        }
+    } else {
+        crate::ui::onboarding::show_initial(handle)?;
+    }
+    Ok(())
+}
+
+pub fn start(handle: &AppHandle) {
+    let state = handle.state::<ApplicationState>();
+    if state
+        .started
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+
+    crate::ui::init(handle);
+    reconcile_cursor(handle);
+}
+
+pub fn is_started(handle: &AppHandle) -> bool {
+    handle
+        .state::<ApplicationState>()
+        .started
+        .load(Ordering::Acquire)
+}
+
+pub fn reconcile_cursor(handle: &AppHandle) {
+    if !is_started(handle) || !crate::macos::accessibility_permission_granted(handle) {
+        return;
+    }
+
+    if let Err(error) = crate::cursor::init(handle) {
+        eprintln!("failed to initialize cursor tracking; will retry: {error}");
+    }
+}

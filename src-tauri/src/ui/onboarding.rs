@@ -1,0 +1,50 @@
+use tauri::{AppHandle, Manager, WebviewUrl};
+
+const WINDOW_LABEL: &str = "onboarding";
+
+fn show(handle: &AppHandle, accessibility_only: bool) -> Result<(), String> {
+    if let Some(window) = handle.get_webview_window(WINDOW_LABEL) {
+        if accessibility_only {
+            window
+                .eval("window.location.href = '/onboarding?step=accessibility'")
+                .map_err(|error| error.to_string())?;
+        }
+        window.unminimize().map_err(|error| error.to_string())?;
+        window.show().map_err(|error| error.to_string())?;
+        return window.set_focus().map_err(|error| error.to_string());
+    }
+
+    let page = if accessibility_only {
+        "/onboarding?step=accessibility"
+    } else {
+        "/onboarding"
+    };
+    let window =
+        tauri::WebviewWindowBuilder::new(handle, WINDOW_LABEL, WebviewUrl::App(page.into()))
+            .title("Friendolls Setup")
+            .inner_size(680.0, 520.0)
+            .min_inner_size(680.0, 520.0)
+            .resizable(false)
+            .maximizable(false)
+            .center()
+            .build()
+            .map_err(|error| error.to_string())?;
+
+    let handle = handle.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::CloseRequested { .. })
+            && !crate::application::is_started(&handle)
+        {
+            handle.exit(0);
+        }
+    });
+    Ok(())
+}
+
+pub fn show_initial(handle: &AppHandle) -> Result<(), String> {
+    show(handle, false)
+}
+
+pub fn show_accessibility_page(handle: &AppHandle) -> Result<(), String> {
+    show(handle, true)
+}

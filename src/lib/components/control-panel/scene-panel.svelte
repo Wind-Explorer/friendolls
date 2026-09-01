@@ -301,34 +301,3 @@
     </div>
   </fieldset>
 </div>
-
-<style>
-  .bg-gridded {
-    background-image:
-      linear-gradient(
-        0deg,
-        transparent 24%,
-        var(--color-primary) 25%,
-        var(--color-primary) 26%,
-        transparent 27%,
-        transparent 74%,
-        var(--color-primary) 75%,
-        var(--color-primary) 76%,
-        transparent 77%,
-        transparent
-      ),
-      linear-gradient(
-        90deg,
-        transparent 24%,
-        var(--color-primary) 25%,
-        var(--color-primary) 26%,
-        transparent 27%,
-        transparent 74%,
-        var(--color-primary) 75%,
-        var(--color-primary) 76%,
-        transparent 77%,
-        transparent
-      );
-    background-size: 32px 32px;
-  }
-</style>
