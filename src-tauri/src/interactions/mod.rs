@@ -53,7 +53,11 @@ impl SeenInteractions {
 }
 
 #[derive(Default)]
-pub struct InteractionState(Mutex<SeenInteractions>);
+pub(crate) struct InteractionState(Mutex<SeenInteractions>);
+
+pub fn init(handle: &AppHandle) {
+    handle.manage(InteractionState::default());
+}
 
 pub(crate) fn receive(
     handle: &AppHandle,

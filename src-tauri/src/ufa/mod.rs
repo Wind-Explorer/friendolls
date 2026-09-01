@@ -28,7 +28,7 @@ pub struct FriendForegroundAppChanged {
 }
 
 #[derive(Default)]
-pub struct ForegroundAppState(RwLock<HashMap<String, AppMeta>>);
+pub(crate) struct ForegroundAppState(RwLock<HashMap<String, AppMeta>>);
 
 impl ForegroundAppState {
     fn update(&self, user_id: String, meta: AppMeta) -> Result<(), String> {
@@ -103,10 +103,12 @@ where
     // no-op on unsupported platforms
 }
 
-/// Initializes the foreground app change listener
-/// and emits events to the Tauri app on changes.
-/// Used for app to emit user foreground app to peers.
 pub fn init(handle: &AppHandle) {
+    handle.manage(ForegroundAppState::default());
+}
+
+/// Starts the foreground app change listener after network state is available.
+pub fn start(handle: &AppHandle) {
     update_local_app(handle, current_app());
     let handle = handle.clone();
 

@@ -19,20 +19,17 @@ mod ui;
 mod updater;
 mod user;
 
-use tauri::Manager;
-
 async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle();
     updater::init(handle).await;
     db::init(handle).await?;
     scene_configuration::init(handle).await?;
     keypair::init(handle).await?;
-    app.manage(interactions::InteractionState::default());
-    app.manage(ufa::ForegroundAppState::default());
-    app.manage(cursor::CursorState::default());
-    app.manage(puppet::PuppetStateStore::default());
-    network::init(handle).await?;
+    interactions::init(handle);
     ufa::init(handle);
+    cursor::init(handle);
+    network::init(handle).await?;
+    ufa::start(handle);
     puppet::init(handle)?;
     application::init(handle).await?;
     Ok(())

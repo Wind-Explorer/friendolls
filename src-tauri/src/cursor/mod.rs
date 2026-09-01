@@ -34,7 +34,7 @@ pub struct CursorPositionChanged {
 }
 
 #[derive(Default)]
-pub struct CursorState(RwLock<HashMap<String, CursorPositions>>);
+pub(crate) struct CursorState(RwLock<HashMap<String, CursorPositions>>);
 
 impl CursorState {
     fn update(
@@ -113,8 +113,12 @@ lazy_static! {
     pub static ref CURSOR_TASK: Mutex<Option<CursorTask>> = Mutex::new(None);
 }
 
-/// Initialize cursor tracking.
-pub fn init(app: &AppHandle) -> Result<(), String> {
+pub fn init(app: &AppHandle) {
+    app.manage(CursorState::default());
+}
+
+/// Starts cursor tracking after Accessibility permission is available.
+pub fn start_tracking(app: &AppHandle) -> Result<(), String> {
     println!("init_cursor_tracking called");
 
     if !crate::macos::accessibility_permission_granted(app) {

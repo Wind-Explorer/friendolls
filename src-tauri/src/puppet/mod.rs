@@ -33,7 +33,7 @@ pub struct PuppetStatesChanged {
 }
 
 #[derive(Default)]
-pub struct PuppetStateStore(RwLock<HashMap<String, PuppetState>>);
+pub(crate) struct PuppetStateStore(RwLock<HashMap<String, PuppetState>>);
 
 impl PuppetStateStore {
     fn update(
@@ -75,6 +75,7 @@ pub fn list_puppet_states(state: State<'_, PuppetStateStore>) -> Result<Vec<Pupp
 }
 
 pub fn init(handle: &AppHandle) -> Result<(), String> {
+    handle.manage(PuppetStateStore::default());
     let monitor = handle
         .primary_monitor()
         .map_err(|error| error.to_string())?

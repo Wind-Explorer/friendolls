@@ -51,7 +51,7 @@ pub fn reconcile_cursor(handle: &AppHandle) {
         return;
     }
 
-    if let Err(error) = crate::cursor::init(handle) {
+    if let Err(error) = crate::cursor::start_tracking(handle) {
         eprintln!("failed to initialize cursor tracking; will retry: {error}");
     }
 }
