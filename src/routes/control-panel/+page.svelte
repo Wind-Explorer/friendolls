@@ -8,6 +8,8 @@
     PanelActions,
     PanelState,
   } from "$lib/components/control-panel/types";
+  import { getVersion } from "@tauri-apps/api/app";
+  import { onMount } from "svelte";
 
   const tabs = [
     { id: "scene", label: "Scene" },
@@ -27,6 +29,13 @@
   });
   let anyDirty = $derived(tabs.some((tab) => panelStates[tab.id].dirty));
   let anyBusy = $derived(tabs.some((tab) => panelStates[tab.id].busy));
+  let appVersion = $state("");
+
+  onMount(() => {
+    getVersion().then((v) => {
+      appVersion = v;
+    });
+  });
 
   function register(
     name: string,
@@ -75,8 +84,11 @@
 <svelte:head><title>Friendolls Properties</title></svelte:head>
 
 <main
-  class="flex h-full min-h-0 flex-col overflow-hidden bg-base-100 p-2 text-base-content"
+  class="relative flex h-full min-h-0 flex-col overflow-hidden bg-base-100 p-2 text-base-content"
 >
+  <div class="absolute right-0 top-0">
+    <p class="text-xs text-base-content/50 p-3">v{appVersion}</p>
+  </div>
   <div class="tabs tabs-lift tabs-sm min-h-0 flex-1">
     {#each tabs as tab}
       <input
