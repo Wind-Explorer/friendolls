@@ -1,8 +1,8 @@
 [package]
-name = "friendolls"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+name = "Friendolls"
+version = "0.1.1"
+description = "Hang out with your friends on your desktop!"
+authors = ["wind-explorer@github"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
