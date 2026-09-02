@@ -1,10 +1,12 @@
 use axum::{Router, http::StatusCode, routing::get};
+use friendolls_common::DEFAULT_SERVER_PORT;
 
 mod network;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
+    let bind_addr =
+        std::env::var("BIND_ADDR").unwrap_or_else(|_| format!("127.0.0.1:{DEFAULT_SERVER_PORT}"));
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     let app = Router::new()
         .route("/", get("ok"))

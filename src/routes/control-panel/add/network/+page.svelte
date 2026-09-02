@@ -94,7 +94,7 @@
         min="1"
         max="65535"
         inputmode="numeric"
-        placeholder="Default"
+        placeholder="27520"
       />
     </fieldset>
   </div>

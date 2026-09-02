@@ -150,9 +150,8 @@
         min="1"
         max="65535"
         inputmode="numeric"
-        placeholder="Default"
+        placeholder="27520"
       />
-      <p class="fieldset-label">Leave port blank to use the server default.</p>
     </fieldset>
   </div>
 

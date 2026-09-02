@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use friendolls_common::{
-    ClientMessage, InteractionDeliveryStatus, Profile, ServerMessage, friends_bytes,
-    interaction_bytes, message_bytes, profile_bytes, register_bytes,
+    ClientMessage, DEFAULT_SERVER_PORT, InteractionDeliveryStatus, Profile, ServerMessage,
+    friends_bytes, interaction_bytes, message_bytes, profile_bytes, register_bytes,
 };
 use futures_util::{SinkExt, StreamExt};
 use tauri::{AppHandle, Manager};
@@ -402,9 +402,37 @@ fn url(remote: &Remote) -> String {
     } else {
         "ws"
     };
-    let port = remote
-        .port
-        .map(|port| format!(":{port}"))
-        .unwrap_or_default();
-    format!("{scheme}://{address}{port}/v1/ws")
+    let port = remote.port.unwrap_or(DEFAULT_SERVER_PORT);
+    format!("{scheme}://{address}:{port}/v1/ws")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn remote(address: &str, port: Option<u16>) -> Remote {
+        Remote {
+            id: "remote-id".to_owned(),
+            address: address.to_owned(),
+            name: None,
+            port,
+            priority: 0,
+        }
+    }
+
+    #[test]
+    fn url_uses_default_server_port_when_unspecified() {
+        assert_eq!(
+            url(&remote("example.net", None)),
+            "ws://example.net:27520/v1/ws"
+        );
+    }
+
+    #[test]
+    fn url_preserves_explicit_port() {
+        assert_eq!(
+            url(&remote("https://example.net", Some(443))),
+            "wss://example.net:443/v1/ws"
+        );
+    }
 }

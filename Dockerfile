@@ -20,6 +20,6 @@ RUN mkdir /app
 COPY --from=builder /app/target/release/friendolls-server /app/friendolls-server
 
 USER friendolls
-ENV BIND_ADDR=0.0.0.0:3000
-EXPOSE 3000
+ENV BIND_ADDR=0.0.0.0:27520
+EXPOSE 27520
 ENTRYPOINT ["/app/friendolls-server"]
