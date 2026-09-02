@@ -9,8 +9,8 @@ pub mod splashscreen;
 mod tray;
 
 pub fn init(app_handle: &AppHandle) {
-    #[cfg(debug_assertions)]
-    debug::init(app_handle);
+    // #[cfg(debug_assertions)]
+    // debug::init(app_handle);
     scene::init(app_handle);
     control_panel::init(app_handle);
     tray::init(app_handle);

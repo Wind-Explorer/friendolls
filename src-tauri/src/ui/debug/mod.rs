@@ -2,6 +2,7 @@ use tauri::{AppHandle, Manager, WebviewUrl};
 
 const WINDOW_LABEL: &str = "debug";
 
+#[allow(dead_code)]
 pub fn init(handle: &AppHandle) {
     if let Some(window) = handle.get_webview_window(WINDOW_LABEL) {
         if !window.is_visible().unwrap() {

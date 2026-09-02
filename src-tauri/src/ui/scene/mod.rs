@@ -176,8 +176,8 @@ pub fn open_window(app_handle: &AppHandle) -> Result<tauri::WebviewWindow, Strin
 
     let window = builder.build().map_err(|e: tauri::Error| e.to_string())?;
 
-    #[cfg(debug_assertions)]
-    window.open_devtools();
+    // #[cfg(debug_assertions)]
+    // window.open_devtools();
 
     Ok(window)
 }
