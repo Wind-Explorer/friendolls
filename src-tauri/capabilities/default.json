@@ -7,7 +7,8 @@
     "control-panel-action-*",
     "debug",
     "onboarding",
-    "scene"
+    "scene",
+    "splashscreen"
   ],
   "permissions": [
     "core:default",

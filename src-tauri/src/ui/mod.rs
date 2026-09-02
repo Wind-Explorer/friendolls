@@ -5,6 +5,7 @@ pub mod control_panel;
 mod debug;
 pub mod onboarding;
 pub mod scene;
+pub mod splashscreen;
 mod tray;
 
 pub fn init(app_handle: &AppHandle) {

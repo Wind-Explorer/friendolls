@@ -14,6 +14,8 @@ pub async fn init(handle: &AppHandle) -> Result<(), String> {
         .await
         .map_err(crate::db::command_error)?;
 
+    crate::ui::splashscreen::close(handle).await?;
+
     if settings.onboarding_done {
         start(handle).await;
         if cfg!(target_os = "macos") && !accessibility_permission_granted {

@@ -19,8 +19,7 @@ mod ui;
 mod updater;
 mod user;
 
-async fn launch_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let handle = app.handle();
+async fn launch_app(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     updater::init(handle).await;
     db::init(handle).await?;
     scene_configuration::init(handle).await?;
@@ -54,7 +53,16 @@ pub fn run() {
         .invoke_handler(specta_builder.invoke_handler())
         .setup(move |app| {
             specta_builder.mount_events(app);
-            tauri::async_runtime::block_on(launch_app(app))?;
+            let handle = app.handle().clone();
+            ui::splashscreen::open(&handle)?;
+            tauri::async_runtime::spawn(async move {
+                let launch_result = launch_app(&handle).await.map_err(|error| error.to_string());
+
+                if let Err(error) = launch_result {
+                    eprintln!("failed to launch application: {error}");
+                    handle.exit(1);
+                }
+            });
             Ok(())
         })
         .build(tauri::generate_context!())
