@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "com.adamcv.friendolls",
+  "bundle": {
+    "targets": ["dmg"],
+    "icon": [
+      "icons/mac/32x32.png",
+      "icons/mac/128x128.png",
+      "icons/mac/128x128@2x.png",
+      "icons/mac/icon.icns",
+      "icons/mac/icon.ico"
+    ]
+  }
+}

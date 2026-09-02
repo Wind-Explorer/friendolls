@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "com.adamcv.friendolls",
+  "bundle": {
+    "targets": ["msi"],
+    "icon": [
+      "icons/win/32x32.png",
+      "icons/win/128x128.png",
+      "icons/win/128x128@2x.png",
+      "icons/win/icon.icns",
+      "icons/win/icon.ico"
+    ]
+  }
+}
