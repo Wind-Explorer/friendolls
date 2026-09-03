@@ -31,7 +31,7 @@ ed25519-dalek = "3.0.0"
 getrandom = "0.4.3"
 device_query = "4.0.1"
 tokio = { version = "1.53.1", features = ["macros", "sync", "time"] }
-tokio-tungstenite = "0.28"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "migrate"] }
 tauri-specta = { version = "2.0.0-rc.21", features = ["derive", "typescript"] }
