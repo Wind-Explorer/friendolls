@@ -7,8 +7,9 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "bun run check:i18n && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check": "bun run check:i18n && bun run compile:i18n && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "compile:i18n": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide --strategy globalVariable preferredLanguage baseLocale --emit-ts-declarations",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri"
   },
@@ -27,6 +28,7 @@
     "@sveltejs/kit": "^2.9.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tauri-apps/cli": "^2",
+    "@types/node": "^26.4.1",
     "@types/three": "^0.185.4",
     "daisyui": "^5.7.21",
     "svelte": "^5.0.0",

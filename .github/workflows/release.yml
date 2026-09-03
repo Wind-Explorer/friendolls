@@ -24,6 +24,9 @@ jobs:
             desktop:
               - 'src/**'
               - 'src-tauri/**'
+              - 'messages/**'
+              - 'project.inlang/**'
+              - 'scripts/check-i18n.mjs'
               - 'package.json'
               - 'bun.lock'
               - 'svelte.config.js'
