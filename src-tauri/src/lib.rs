@@ -56,8 +56,8 @@ pub fn run() {
         .setup(move |app| {
             specta_builder.mount_events(app);
             let handle = app.handle().clone();
-            ui::splashscreen::open(&handle)?;
             tauri::async_runtime::spawn(async move {
+                ui::splashscreen::open(&handle).await.unwrap();
                 let launch_result = launch_app(&handle).await.map_err(|error| error.to_string());
 
                 if let Err(error) = launch_result {
@@ -69,7 +69,13 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(|_, _| ());
+        .run(|_, e| {
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = e {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
+        });
 }
 
 fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {

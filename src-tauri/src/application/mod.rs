@@ -19,10 +19,10 @@ pub async fn init(handle: &AppHandle) -> Result<(), String> {
     if settings.onboarding_done {
         start(handle).await;
         if cfg!(target_os = "macos") && !accessibility_permission_granted {
-            crate::ui::onboarding::show_accessibility_page(handle)?;
+            crate::ui::onboarding::show_accessibility_page(handle).await?;
         }
     } else {
-        crate::ui::onboarding::show_initial(handle)?;
+        crate::ui::onboarding::show_initial(handle).await?;
     }
     Ok(())
 }

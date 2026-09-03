@@ -61,7 +61,7 @@ async fn apply_permission_state(handle: &AppHandle, granted: bool) -> Result<boo
         if granted {
             crate::application::reconcile_cursor(handle).await;
         } else {
-            crate::ui::onboarding::show_accessibility_page(handle)?;
+            crate::ui::onboarding::show_accessibility_page(handle).await?;
         }
     }
     Ok(true)

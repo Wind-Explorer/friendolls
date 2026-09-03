@@ -9,7 +9,7 @@ struct SplashscreenState {
     opened_at: Instant,
 }
 
-pub fn open(handle: &AppHandle) -> Result<(), String> {
+pub async fn open(handle: &AppHandle) -> Result<(), String> {
     tauri::WebviewWindowBuilder::new(handle, WINDOW_LABEL, WebviewUrl::App("/splash.html".into()))
         .title("Friendolls")
         .inner_size(500.0, 290.0)

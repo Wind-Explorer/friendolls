@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager, WebviewUrl};
 
 const WINDOW_LABEL: &str = "onboarding";
 
-fn show(handle: &AppHandle, accessibility_only: bool) -> Result<(), String> {
+async fn show(handle: &AppHandle, accessibility_only: bool) -> Result<(), String> {
     if let Some(window) = handle.get_webview_window(WINDOW_LABEL) {
         if accessibility_only {
             window
@@ -44,10 +44,10 @@ fn show(handle: &AppHandle, accessibility_only: bool) -> Result<(), String> {
     Ok(())
 }
 
-pub fn show_initial(handle: &AppHandle) -> Result<(), String> {
-    show(handle, false)
+pub async fn show_initial(handle: &AppHandle) -> Result<(), String> {
+    show(handle, false).await
 }
 
-pub fn show_accessibility_page(handle: &AppHandle) -> Result<(), String> {
-    show(handle, true)
+pub async fn show_accessibility_page(handle: &AppHandle) -> Result<(), String> {
+    show(handle, true).await
 }
