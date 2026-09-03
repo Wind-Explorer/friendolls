@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PuppetMovementMode } from "$lib/bindings";
+  import { messages } from "$lib/i18n";
 
   let {
     movementMode = $bindable(),
@@ -8,9 +9,9 @@
 </script>
 
 <fieldset class="fieldset border border-base-300 bg-base-100 p-4">
-  <legend class="fieldset-legend px-1">Puppets reposition</legend>
+  <legend class="fieldset-legend px-1">{$messages.puppet_movement()}</legend>
   <div class="grid grid-cols-2 gap-3">
-    {#each [{ id: "free" as const, image: "/puppet-movement-free.svg", alt: "Puppets moving freely across the full viewport", label: "Freeroam around" }, { id: "bottom" as const, image: "/puppet-movement-bottom.svg", alt: "Puppets moving along the bottom of the viewport", label: "Stay on the ground" }] as option (option.id)}
+    {#each [{ id: "free" as const, image: "/puppet-movement-free.svg", alt: $messages.puppet_free_alt(), label: $messages.puppet_free() }, { id: "bottom" as const, image: "/puppet-movement-bottom.svg", alt: $messages.puppet_bottom_alt(), label: $messages.puppet_bottom() }] as option (option.id)}
       <label
         class="card cursor-pointer overflow-hidden border border-base-300 bg-base-200"
         class:border-primary={movementMode === option.id}

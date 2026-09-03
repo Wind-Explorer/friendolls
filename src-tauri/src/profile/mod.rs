@@ -23,6 +23,7 @@ pub async fn get(database: &AppDatabase, public_key: &str) -> Result<User, sqlx:
     .fetch_one(database.pool())
     .await?;
 
+    let display_name_configured = !display_name.is_empty();
     Ok(User {
         id: public_key.to_owned(),
         display_name: if display_name.is_empty() {
@@ -30,6 +31,7 @@ pub async fn get(database: &AppDatabase, public_key: &str) -> Result<User, sqlx:
         } else {
             display_name
         },
+        display_name_configured,
         skin_hash,
     })
 }
@@ -151,6 +153,7 @@ mod tests {
             User {
                 id: "public-key".to_owned(),
                 display_name: "Wind".to_owned(),
+                display_name_configured: true,
                 skin_hash: None,
             }
         );
@@ -159,6 +162,7 @@ mod tests {
             User {
                 id: "rotated-public-key".to_owned(),
                 display_name: "Wind".to_owned(),
+                display_name_configured: true,
                 skin_hash: None,
             }
         );
@@ -209,6 +213,7 @@ mod tests {
             User {
                 id: "public-key".to_owned(),
                 display_name: "Wind".to_owned(),
+                display_name_configured: true,
                 skin_hash: None,
             }
         );

@@ -11,6 +11,7 @@ use specta::Type;
 pub struct User {
     pub id: String,
     pub display_name: String,
+    pub display_name_configured: bool,
     pub skin_hash: Option<String>,
 }
 

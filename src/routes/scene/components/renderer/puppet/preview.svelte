@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { messages } from "$lib/i18n";
   import { onDestroy, onMount } from "svelte";
   import * as THREE from "three";
   import { PuppetVisual, SOUTH_WEST_ROTATION_Y } from "./visual";
@@ -91,7 +92,7 @@
 
 <div
   class="aspect-square size-full overflow-hidden"
-  aria-label="Live puppet preview"
+  aria-label={$messages.scene_loading_preview()}
   role="img"
   bind:this={container}
 ></div>

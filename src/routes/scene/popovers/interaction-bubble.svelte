@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fly } from "svelte/transition";
   import type { FriendInteractionReceived } from "$lib/bindings";
+  import { messages } from "$lib/i18n";
 
   type Props = {
     interaction: FriendInteractionReceived;
@@ -30,7 +31,7 @@
     <button
       type="button"
       class="grid size-5 place-items-center text-xs text-base-content/50 transition-colors hover:text-base-content"
-      aria-label="Dismiss interaction"
+      aria-label={$messages.interaction_dismiss()}
       onclick={onDismiss}
     >
       ×
@@ -43,7 +44,7 @@
         class="origin-bottom-right animate-[wiggle_650ms_ease-in-out_2] text-xl"
         >👋</span
       >
-      <span>waved</span>
+      <span>{$messages.interaction_waved()}</span>
     </div>
   {:else if interaction.content.type === "text"}
     <p
@@ -55,16 +56,16 @@
     <button
       type="button"
       class="block w-full cursor-zoom-in bg-base-200"
-      aria-label={`Open image from ${senderName}`}
+      aria-label={$messages.interaction_open_image({ sender: senderName })}
       onclick={() => onOpenImage(imageSource)}
     >
       <img
         src={imageSource}
-        alt={`Preview sent by ${senderName}`}
+        alt={$messages.interaction_preview_image({ sender: senderName })}
         class="h-24 w-full object-cover"
       />
       <span class="block px-2 py-1 text-[0.6rem] text-base-content/60">
-        Click to enlarge
+        {$messages.interaction_enlarge()}
       </span>
     </button>
   {/if}

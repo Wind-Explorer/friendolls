@@ -19,6 +19,7 @@
   import ServerStep from "./components/server-step.svelte";
   import SkinStep from "./components/skin-step.svelte";
   import WelcomeStep from "./components/welcome-step.svelte";
+  import { errorMessage, messages, type MessageCatalog } from "$lib/i18n";
 
   type StepId =
     | "welcome"
@@ -32,39 +33,48 @@
 
   const allSteps: Array<{
     id: StepId;
-    title: string;
+    title: (catalog: MessageCatalog) => string;
+    navigationLabel: (catalog: MessageCatalog) => string;
   }> = [
     {
       id: "welcome",
-      title: "Welcome to Friendolls!",
+      title: (catalog) => catalog.onboarding_welcome_title(),
+      navigationLabel: (catalog) => catalog.onboarding_welcome_nav(),
     },
     {
       id: "identity",
-      title: "Choose your Display Name",
+      title: (catalog) => catalog.onboarding_identity_title(),
+      navigationLabel: (catalog) => catalog.onboarding_identity_nav(),
     },
     {
       id: "skin",
-      title: "Choose your Puppet's Skin",
+      title: (catalog) => catalog.onboarding_skin_title(),
+      navigationLabel: (catalog) => catalog.onboarding_skin_nav(),
     },
     {
       id: "movement",
-      title: "Choose your Movement Mode",
+      title: (catalog) => catalog.onboarding_movement_title(),
+      navigationLabel: (catalog) => catalog.onboarding_movement_nav(),
     },
     {
       id: "server",
-      title: "Add a server",
+      title: (catalog) => catalog.onboarding_server_title(),
+      navigationLabel: (catalog) => catalog.onboarding_server_nav(),
     },
     {
       id: "friend",
-      title: "Add a friend",
+      title: (catalog) => catalog.onboarding_friend_title(),
+      navigationLabel: (catalog) => catalog.onboarding_friend_nav(),
     },
     {
       id: "accessibility",
-      title: "Allow cursor access",
+      title: (catalog) => catalog.onboarding_accessibility_title(),
+      navigationLabel: (catalog) => catalog.onboarding_accessibility_nav(),
     },
     {
       id: "complete",
-      title: "Setup is complete",
+      title: (catalog) => catalog.onboarding_complete_title(),
+      navigationLabel: (catalog) => catalog.onboarding_complete_nav(),
     },
   ];
 
@@ -107,6 +117,10 @@
   );
   let isLastStep = $derived(stepIndex === steps.length - 1);
 
+  $effect(() => {
+    void getCurrentWindow().setTitle($messages.onboarding_window_title());
+  });
+
   onMount(() => {
     let unlisten: (() => void) | undefined;
     let disposed = false;
@@ -126,10 +140,9 @@
         status = nextStatus;
         profile = nextProfile;
         configuration = nextConfiguration;
-        displayName =
-          nextProfile.displayName === "Anonymous"
-            ? ""
-            : nextProfile.displayName;
+        displayName = nextProfile.displayNameConfigured
+          ? nextProfile.displayName
+          : "";
         skinMode = nextProfile.skinHash ? "current" : "default";
         movementMode = nextConfiguration.puppetMovementMode;
 
@@ -145,7 +158,7 @@
           if (requestedIndex >= 0) stepIndex = requestedIndex;
         }
       } catch (cause) {
-        if (!disposed) error = String(cause);
+        if (!disposed) error = errorMessage(cause);
       }
     })();
 
@@ -174,7 +187,7 @@
       port !== null &&
       (!Number.isInteger(port) || port < 1 || port > 65535)
     ) {
-      throw new Error("Port must be a whole number from 1 to 65535.");
+      throw new Error($messages.error_port_invalid());
     }
     return {
       address: serverAddress.trim(),
@@ -186,11 +199,11 @@
   async function saveCurrentStep() {
     if (step.id === "identity") {
       const nextName = displayName.trim();
-      if (!nextName) throw new Error("Display name cannot be empty.");
+      if (!nextName) throw new Error($messages.error_display_name_empty());
       profile = await commands.updateProfile(nextName, null);
       displayName = profile.displayName;
     } else if (step.id === "skin") {
-      if (!profile) throw new Error("Your profile is still loading.");
+      if (!profile) throw new Error($messages.error_profile_loading());
       if (skinMode === "default" && profile.skinHash) {
         profile = await commands.resetProfileSkin();
       } else if (skinMode === "custom" && skinFile) {
@@ -201,7 +214,7 @@
         selectSkin(null);
         skinMode = "current";
       } else if (skinMode === "custom") {
-        throw new Error("Choose a 64×64 PNG skin before continuing.");
+        throw new Error($messages.error_skin_required());
       }
     } else if (step.id === "movement") {
       configuration = await commands.updateSceneConfiguration({
@@ -225,9 +238,7 @@
         if (previousFriendId) await commands.deleteFriend(previousFriendId);
       }
     } else if (step.id === "accessibility" && !permissionGranted) {
-      throw new Error(
-        "Turn on Friendolls in macOS Accessibility settings before continuing.",
-      );
+      throw new Error($messages.error_accessibility_required());
     }
   }
 
@@ -246,7 +257,7 @@
         stepIndex += 1;
       }
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
     } finally {
       busy = false;
     }
@@ -265,25 +276,26 @@
     try {
       const granted = await commands.requestAccessibilityPermission();
       if (!granted) {
-        error =
-          "macOS opened Accessibility settings. Enable Friendolls there; this page will confirm automatically.";
+        error = $messages.accessibility_settings_opened();
       }
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
     } finally {
       busy = false;
     }
   }
 </script>
 
-<svelte:head><title>Friendolls Setup</title></svelte:head>
+<svelte:head><title>{$messages.onboarding_window_title()}</title></svelte:head>
 
 <main class="flex h-full min-h-0 flex-col bg-base-200 text-base-content">
   <div class="grid min-h-0 flex-1 grid-cols-[11rem_minmax(0,1fr)]">
     <aside
       class="flex flex-col bg-linear-to-b from-primary to-primary/50 p-5 text-primary-content"
     >
-      <div class="text-lg font-bold leading-tight">Friendolls<br />Setup</div>
+      <div class="text-lg font-bold leading-tight">
+        {$messages.onboarding_brand()}
+      </div>
       <div class="mt-6 flex-1 space-y-2 text-[11px]">
         {#each steps as candidate, index (candidate.id)}
           <div
@@ -298,7 +310,7 @@
             >
               {index < stepIndex ? "✓" : index + 1}
             </span>
-            <span>{candidate.title.replace("Choose your ", "")}</span>
+            <span>{candidate.navigationLabel($messages)}</span>
           </div>
         {/each}
       </div>
@@ -308,8 +320,7 @@
     <section class="flex min-h-0 flex-col bg-base-100">
       {#if step}
         <header class="bg-base-100 px-6 pt-4">
-          <p class="font-bold text-2xl">{step.title}</p>
-          <!-- <p class="text-xs text-base-content/65">{step.description}</p> -->
+          <p class="font-bold text-2xl">{step.title($messages)}</p>
         </header>
 
         <div class="min-h-0 flex-1 overflow-y-auto p-6">
@@ -324,7 +335,7 @@
           {/if}
 
           {#if !status || !profile}
-            <div class="space-y-3" aria-label="Loading setup">
+            <div class="space-y-3" aria-label={$messages.onboarding_loading()}>
               <div class="skeleton h-5 w-2/3"></div>
               <div class="skeleton h-24 w-full"></div>
             </div>
@@ -370,8 +381,11 @@
         >
           <span class="text-[10px] text-base-content/60">
             {remediation
-              ? "Permission repair"
-              : `Step ${stepIndex + 1} of ${steps.length}`}
+              ? $messages.onboarding_permission_repair()
+              : $messages.onboarding_step_count({
+                  current: stepIndex + 1,
+                  total: steps.length,
+                })}
           </span>
           <div class="flex justify-end gap-2">
             {#if !remediation}
@@ -379,7 +393,7 @@
                 class="btn min-w-20"
                 type="button"
                 disabled={busy || stepIndex === 0}
-                onclick={back}>&lt; Back</button
+                onclick={back}>{$messages.onboarding_back()}</button
               >
             {/if}
             <button
@@ -390,12 +404,12 @@
               onclick={next}
             >
               {busy
-                ? "Working…"
+                ? $messages.onboarding_working()
                 : remediation
-                  ? "Done"
+                  ? $messages.onboarding_done()
                   : isLastStep
-                    ? "Finish"
-                    : "Next >"}
+                    ? $messages.onboarding_finish()
+                    : $messages.onboarding_next()}
             </button>
           </div>
         </footer>

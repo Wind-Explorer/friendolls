@@ -89,6 +89,12 @@ async completeOnboarding() : Promise<null> {
 async requestAccessibilityPermission() : Promise<boolean> {
     return await TAURI_INVOKE("request_accessibility_permission");
 },
+async getLocaleSettings() : Promise<LocaleChanged> {
+    return await TAURI_INVOKE("get_locale_settings");
+},
+async setLocalePreference(preference: string) : Promise<LocaleChanged> {
+    return await TAURI_INVOKE("set_locale_preference", { preference });
+},
 async openActionWindow(name: string, title: string, pageUrl: string) : Promise<null> {
     return await TAURI_INVOKE("open_action_window", { name, title, pageUrl });
 },
@@ -107,6 +113,7 @@ friendForegroundAppChanged: FriendForegroundAppChanged,
 friendInteractionReceived: FriendInteractionReceived,
 friendStatusesChanged: FriendStatusesChanged,
 friendsChanged: FriendsChanged,
+localeChanged: LocaleChanged,
 networkStatusChanged: NetworkStatusChanged,
 onboardingStatus: OnboardingStatus,
 profileChanged: ProfileChanged,
@@ -120,6 +127,7 @@ friendForegroundAppChanged: "friend-foreground-app-changed",
 friendInteractionReceived: "friend-interaction-received",
 friendStatusesChanged: "friend-statuses-changed",
 friendsChanged: "friends-changed",
+localeChanged: "locale-changed",
 networkStatusChanged: "network-status-changed",
 onboardingStatus: "onboarding-status",
 profileChanged: "profile-changed",
@@ -163,6 +171,7 @@ export type FriendStatusesChanged = { friendIds: string[] }
 export type FriendsChanged = { friends: Friend[] }
 export type InteractionContent = { type: "text"; text: string } | { type: "wave" } | { type: "image"; mediaType: string; data: string }
 export type LiveDataSnapshot = { cursorPositions: Partial<{ [key in string]: CursorPositions }>; foregroundApps: Partial<{ [key in string]: AppMeta }> }
+export type LocaleChanged = { preference: string; locale: string }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
 export type OnboardingStatus = { onboardingDone: boolean; macosAccessibilityPermissionGranted: boolean; requiresAccessibilityPermission: boolean }
 export type ProfileChanged = { profile: User }
@@ -179,7 +188,7 @@ export type SceneHitbox = { x: number; y: number; width: number; height: number 
  * Public user identity exchanged with peers and remote servers. `id` is the
  * user's Ed25519 public key and is not persisted as local profile metadata.
  */
-export type User = { id: string; displayName: string; skinHash: string | null }
+export type User = { id: string; displayName: string; displayNameConfigured: boolean; skinHash: string | null }
 
 /** tauri-specta globals **/
 

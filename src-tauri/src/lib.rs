@@ -13,6 +13,7 @@ mod profile;
 mod puppet;
 mod remotes;
 mod scene_configuration;
+mod settings;
 mod skins;
 mod ufa;
 mod ui;
@@ -22,6 +23,7 @@ mod user;
 async fn launch_app(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     updater::init(handle).await;
     db::init(handle).await?;
+    settings::init(handle).await?;
     scene_configuration::init(handle).await?;
     keypair::init(handle).await?;
     interactions::init(handle);
@@ -102,6 +104,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             onboarding::get_onboarding_status,
             onboarding::complete_onboarding,
             macos::request_accessibility_permission,
+            settings::get_locale_settings,
+            settings::set_locale_preference,
             ui::control_panel::open_action_window,
             ui::scene::update_scene_hitboxes,
         ])
@@ -118,6 +122,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             puppet::PuppetStatesChanged,
             scene_configuration::SceneConfigurationChanged,
             onboarding::OnboardingStatus,
+            settings::LocaleChanged,
         ])
 }
 

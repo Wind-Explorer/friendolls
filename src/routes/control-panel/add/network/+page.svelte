@@ -2,12 +2,17 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { commands, type RemoteInput } from "$lib/bindings";
   import PanelMessage from "$lib/components/control-panel/panel-message.svelte";
+  import { errorMessage, messages } from "$lib/i18n";
 
   let name = $state("");
   let address = $state("");
   let port = $state("");
   let busy = $state(false);
   let error = $state("");
+
+  $effect(() => {
+    void getCurrentWindow().setTitle($messages.action_add_server_title());
+  });
 
   async function closeWindow() {
     await getCurrentWindow().close();
@@ -16,14 +21,14 @@
   function remoteInput(): RemoteInput | null {
     const parsedPort = port ? Number(port) : null;
     if (!address.trim()) {
-      error = "Server address is required.";
+      error = $messages.error_server_address_required();
       return null;
     }
     if (
       parsedPort !== null &&
       (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535)
     ) {
-      error = "Port must be a whole number from 1 to 65535.";
+      error = $messages.error_port_invalid();
       return null;
     }
     return {
@@ -44,13 +49,13 @@
       await commands.createRemote(remote);
       await closeWindow();
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
       busy = false;
     }
   }
 </script>
 
-<svelte:head><title>Add Server</title></svelte:head>
+<svelte:head><title>{$messages.action_add_server_title()}</title></svelte:head>
 <svelte:window
   onkeydown={(event) => event.key === "Escape" && !busy && void closeWindow()}
 />
@@ -63,9 +68,9 @@
     {#if error}<PanelMessage kind="error">{error}</PanelMessage>{/if}
 
     <fieldset class="fieldset border border-base-300 bg-base-100 p-3">
-      <legend class="fieldset-legend px-1">Server details</legend>
+      <legend class="fieldset-legend px-1">{$messages.common_server_details()}</legend>
       <label class="fieldset-label" for="remote-name"
-        >Friendly name (optional)</label
+        >{$messages.common_optional_friendly_name()}</label
       >
       <input
         id="remote-name"
@@ -74,7 +79,7 @@
         maxlength="64"
         autocomplete="off"
       />
-      <label class="fieldset-label mt-1" for="remote-address">Address</label>
+      <label class="fieldset-label mt-1" for="remote-address">{$messages.common_address()}</label>
       <input
         id="remote-address"
         class="input w-full"
@@ -84,7 +89,7 @@
         required
       />
       <label class="fieldset-label mt-1" for="remote-port"
-        >Port (optional)</label
+        >{$messages.common_optional_port()}</label
       >
       <input
         id="remote-port"
@@ -101,13 +106,13 @@
 
   <div class="flex shrink-0 justify-end gap-1.5 border-t border-base-300 pt-2">
     <button class="btn min-w-16" type="submit" disabled={busy}
-      >{busy ? "Adding…" : "OK"}</button
+      >{busy ? $messages.action_adding() : $messages.common_ok()}</button
     >
     <button
       class="btn min-w-16"
       type="button"
       disabled={busy}
-      onclick={closeWindow}>Cancel</button
+      onclick={closeWindow}>{$messages.common_cancel()}</button
     >
   </div>
 </form>

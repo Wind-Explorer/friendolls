@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fade, scale } from "svelte/transition";
+  import { messages } from "$lib/i18n";
 
   type Props = {
     source: string;
@@ -26,12 +27,12 @@
     class="relative grid max-h-full max-w-full place-items-center border border-white/20 bg-black/70 p-2 shadow-2xl"
     role="dialog"
     aria-modal="true"
-    aria-label={`Image from ${senderName}`}
+    aria-label={$messages.image_from({ sender: senderName })}
     transition:scale={{ start: 0.96, duration: 180 }}
   >
     <img
       src={source}
-      alt={`Image sent by ${senderName}`}
+      alt={$messages.image_sent_by({ sender: senderName })}
       class="max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)] object-contain"
     />
     <div
@@ -42,7 +43,7 @@
         bind:this={closeButton}
         type="button"
         class="grid size-6 place-items-center text-lg leading-none hover:bg-white/15 focus-visible:outline focus-visible:outline-white"
-        aria-label="Close image"
+        aria-label={$messages.image_close()}
         onclick={onClose}
       >
         ×

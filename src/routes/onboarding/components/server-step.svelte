@@ -1,5 +1,6 @@
 <script lang="ts">
   import PanelMessage from "$lib/components/control-panel/panel-message.svelte";
+  import { messages } from "$lib/i18n";
 
   let {
     serverName = $bindable(),
@@ -14,14 +15,11 @@
   } = $props();
 </script>
 
-<PanelMessage
-  >If you do not have a server yet, leave this empty and continue. You can add
-  one later.</PanelMessage
->
+<PanelMessage>{$messages.onboarding_server_skip()}</PanelMessage>
 <fieldset class="fieldset mt-3 border border-base-300 bg-base-100 p-4">
-  <legend class="fieldset-legend px-1">Server details</legend>
+  <legend class="fieldset-legend px-1">{$messages.common_server_details()}</legend>
   <label class="label" for="onboarding-server-name"
-    >Friendly name (optional)</label
+    >{$messages.common_optional_friendly_name()}</label
   >
   <input
     id="onboarding-server-name"
@@ -31,7 +29,7 @@
     autocomplete="off"
     disabled={busy}
   />
-  <label class="label mt-1" for="onboarding-server-address">Address</label>
+  <label class="label mt-1" for="onboarding-server-address">{$messages.common_address()}</label>
   <input
     id="onboarding-server-address"
     class="input w-full"
@@ -40,7 +38,7 @@
     autocomplete="off"
     disabled={busy}
   />
-  <label class="label mt-1" for="onboarding-server-port">Port (optional)</label>
+  <label class="label mt-1" for="onboarding-server-port">{$messages.common_optional_port()}</label>
   <input
     id="onboarding-server-port"
     class="input w-28"

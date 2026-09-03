@@ -4,6 +4,7 @@
   import { commands } from "$lib/bindings";
   import PanelMessage from "$lib/components/control-panel/panel-message.svelte";
   import Info from "$lib/icons/info.svelte";
+  import { errorMessage, messages } from "$lib/i18n";
 
   let friendId = $state("");
   let busy = $state(false);
@@ -14,6 +15,10 @@
   }>({ status: "idle", text: "" });
   let lookupTimer: ReturnType<typeof setTimeout> | undefined;
   let lookupGeneration = 0;
+
+  $effect(() => {
+    void getCurrentWindow().setTitle($messages.action_add_friend_title());
+  });
 
   onDestroy(() => {
     lookupGeneration += 1;
@@ -28,7 +33,7 @@
     event.preventDefault();
     const id = friendId.trim();
     if (!id) {
-      error = "Identification key is required.";
+      error = $messages.error_friend_key_required();
       return;
     }
 
@@ -38,7 +43,7 @@
       await commands.createFriend(id);
       await closeWindow();
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
       busy = false;
     }
   }
@@ -52,7 +57,7 @@
       return;
     }
 
-    preview = { status: "loading", text: "Resolving…" };
+    preview = { status: "loading", text: $messages.common_resolving() };
     lookupTimer = setTimeout(
       () => void resolveProfilePreview(id, generation),
       250,
@@ -65,16 +70,19 @@
       if (generation !== lookupGeneration) return;
       preview = displayName
         ? { status: "resolved", text: displayName }
-        : { status: "unresolved", text: "Unresolved user" };
+        : { status: "unresolved", text: $messages.common_unresolved_user() };
     } catch {
       if (generation === lookupGeneration) {
-        preview = { status: "unavailable", text: "Unresolved" };
+        preview = {
+          status: "unavailable",
+          text: $messages.common_unresolved(),
+        };
       }
     }
   }
 </script>
 
-<svelte:head><title>Add Friend</title></svelte:head>
+<svelte:head><title>{$messages.action_add_friend_title()}</title></svelte:head>
 <svelte:window
   onkeydown={(event) => event.key === "Escape" && !busy && void closeWindow()}
 />
@@ -87,16 +95,18 @@
     {#if error}<PanelMessage kind="error">{error}</PanelMessage>{/if}
 
     <PanelMessage>
-      Their display name will appear after Friendolls learns their profile from
-      a shared server.
+      {$messages.action_friend_profile_help()}
     </PanelMessage>
 
     <fieldset class="fieldset border border-base-300 bg-base-100 p-3">
-      <legend class="fieldset-legend px-1">Friend identity</legend>
+      <legend class="fieldset-legend px-1"
+        >{$messages.common_friend_identity()}</legend
+      >
       <label class="fieldset-label" for="friend-key"
-        >Identification Key <div
+        >{$messages.common_identification_key()}
+        <div
           class="tooltip tooltip-primary"
-          data-tip="Verify with your friend before adding."
+          data-tip={$messages.action_friend_verify()}
         >
           <div class="*:size-3">
             <Info />
@@ -105,13 +115,13 @@
       >
       <textarea
         id="friend-key"
-        class="textarea h-20 w-full resize-none font-mono text-[10px]"
+        class="textarea h-20 w-full resize-none text-[10px]"
         bind:value={friendId}
         autocomplete="off"
         oninput={scheduleProfilePreview}
         required></textarea>
       <label class="fieldset-label mt-1" for="friend-display-name"
-        >Display name</label
+        >{$messages.common_display_name()}</label
       >
       <input
         id="friend-display-name"
@@ -126,13 +136,13 @@
 
   <div class="flex shrink-0 justify-end gap-1.5 border-t border-base-300 pt-2">
     <button class="btn min-w-16" type="submit" disabled={busy}
-      >{busy ? "Adding…" : "OK"}</button
+      >{busy ? $messages.action_adding() : $messages.common_ok()}</button
     >
     <button
       class="btn min-w-16"
       type="button"
       disabled={busy}
-      onclick={closeWindow}>Cancel</button
+      onclick={closeWindow}>{$messages.common_cancel()}</button
     >
   </div>
 </form>

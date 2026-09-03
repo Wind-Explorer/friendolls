@@ -74,12 +74,16 @@ async fn database_requires_newer_app(pool: &Pool<Sqlite>) -> Result<bool, sqlx::
 
 fn show_outdated_app_dialog(app: &AppHandle) {
     app.dialog()
-        .message(
-            "Your on-device data was created by a newer version of Friendolls and cannot be opened safely by this version.\n\nDownload and install the latest version of Friendolls, then reopen the app. Your data has not been changed.",
-        )
-        .title("Friendolls is out of date")
+        .message(crate::settings::system_text(
+            crate::settings::NativeText::OutdatedMessage,
+        ))
+        .title(crate::settings::system_text(
+            crate::settings::NativeText::OutdatedTitle,
+        ))
         .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCustom("Close Friendolls".into()))
+        .buttons(MessageDialogButtons::OkCustom(
+            crate::settings::system_text(crate::settings::NativeText::CloseFriendolls).into(),
+        ))
         .show(move |_| std::process::exit(0));
 }
 

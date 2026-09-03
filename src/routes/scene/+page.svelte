@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import Popover from "$lib/components/popover.svelte";
   import { friendName, friends } from "$lib/listeners/friends";
   import { onlineFriendIds } from "$lib/listeners/friend-statuses";
@@ -14,6 +15,7 @@
   import SceneImageViewer from "./popovers/image-viewer.svelte";
   import SceneInteractionBubble from "./popovers/interaction-bubble.svelte";
   import SceneUserPopoverContent from "./popovers/user-interaction.svelte";
+  import { messages } from "$lib/i18n";
 
   let selectedUserId = $state<string | null>(null);
   let lockedPopoverUserId = $state<string | null>(null);
@@ -38,6 +40,10 @@
       ]),
     ),
   );
+
+  $effect(() => {
+    void getCurrentWindow().setTitle($messages.scene_window_title());
+  });
 
   onMount(startHitboxSync);
 
@@ -66,7 +72,7 @@
       ? $profile.displayName
       : friendName(
           $friends.find((friend) => friend.id === userId),
-          "Unknown user",
+          $messages.common_unknown_user(),
         );
   }
 
@@ -99,6 +105,8 @@
       : `${horizontal} top: ${bounds.y + bounds.height + 12}px;`;
   }
 </script>
+
+<svelte:head><title>{$messages.scene_window_title()}</title></svelte:head>
 
 <div class="relative size-full">
   <Renderer
@@ -147,7 +155,7 @@
 
           <Popover
             id={popoverId}
-            label="Show live user information"
+            label={$messages.scene_show_user()}
             labelledBy={`${popoverId}-title`}
             open={selectedUserId === userId}
             onOpenChange={(open) => setPopoverOpen(userId, open)}

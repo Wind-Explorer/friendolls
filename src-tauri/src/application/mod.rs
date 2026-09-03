@@ -10,7 +10,7 @@ struct ApplicationState {
 pub async fn init(handle: &AppHandle) -> Result<(), String> {
     handle.manage(ApplicationState::default());
     let accessibility_permission_granted = crate::macos::init(handle).await?;
-    let settings = crate::onboarding::get(&handle.state())
+    let settings = crate::settings::get(&handle.state())
         .await
         .map_err(crate::db::command_error)?;
 

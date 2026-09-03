@@ -6,6 +6,7 @@
   } from "$lib/bindings";
   import { friendName, friends } from "$lib/listeners/friends";
   import { profile } from "$lib/listeners/profile";
+  import { errorMessage, messages } from "$lib/i18n";
 
   type Props = {
     titleId: string;
@@ -35,7 +36,7 @@
       ? $profile.displayName
       : friendName(
           $friends.find((friend) => friend.id === userId),
-          "Unknown user",
+          $messages.common_unknown_user(),
         ),
   );
 
@@ -54,7 +55,7 @@
       mode = null;
       onSent();
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
     } finally {
       sending = false;
     }
@@ -95,7 +96,7 @@
         onSent();
       }
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
     } finally {
       sending = false;
     }
@@ -115,7 +116,7 @@
     {#if mode !== null}
       <button
         class="absolute right-1 top-1 grid size-6 place-items-center text-lg leading-none btn btn-square btn-ghost"
-        aria-label="Close interaction popover"
+        aria-label={$messages.scene_close_interaction()}
         onclick={onDismiss}
       >
         ×
@@ -123,7 +124,7 @@
     {/if}
 
     <section>
-      <h3 class="text-xs text-base-content/50">Currently enjoying</h3>
+      <h3 class="text-xs text-base-content/50">{$messages.scene_currently_enjoying()}</h3>
       <div class="mt-1 flex min-w-0 items-center gap-2">
         {#if foregroundApp?.ico}
           <img
@@ -136,7 +137,7 @@
           <p class="truncate text-sm">
             {foregroundApp?.local ??
               foregroundApp?.unlocal ??
-              "Waiting for data"}
+              $messages.scene_waiting_data()}
           </p>
           {#if foregroundApp?.local && foregroundApp.unlocal}
             <p class="truncate text-xs text-base-content/50">
@@ -158,7 +159,7 @@
             aria-pressed={mode === "message"}
             onclick={() => selectMode("message")}
           >
-            Message
+            {$messages.scene_message()}
           </button>
           <button
             type="button"
@@ -166,7 +167,7 @@
             disabled={sending}
             onclick={() => sendContent({ type: "wave" })}
           >
-            Wave
+            {$messages.scene_wave()}
           </button>
           <button
             type="button"
@@ -176,7 +177,7 @@
             aria-pressed={mode === "image"}
             onclick={() => selectMode("image")}
           >
-            Image
+            {$messages.scene_image()}
           </button>
         </div>
 
@@ -193,8 +194,8 @@
               maxlength="500"
               rows="3"
               class="textarea textarea-xs w-full resize-none bg-base-100"
-              placeholder={`Write to ${username}`}
-              aria-label={`Message ${username}`}></textarea>
+              placeholder={$messages.scene_write_to({ username })}
+              aria-label={$messages.scene_message_user({ username })}></textarea>
             <div class="flex items-center justify-between gap-2">
               <span class="text-[0.6rem] text-base-content/45">
                 {message.length}/500
@@ -204,7 +205,7 @@
                 class="btn btn-primary btn-xs"
                 disabled={sending || !message.trim()}
               >
-                {sending ? "Sending…" : "Send"}
+                {sending ? $messages.scene_sending() : $messages.scene_send()}
               </button>
             </div>
           </form>
@@ -213,9 +214,9 @@
             class="mt-2 grid min-h-24 place-items-center border border-primary/60 bg-primary/5 p-2 text-center"
           >
             <div>
-              <p class="text-xs">Choose or paste an image</p>
+              <p class="text-xs">{$messages.scene_choose_or_paste()}</p>
               <p class="mt-0.5 text-[0.6rem] text-base-content/45">
-                Compressed to 480 px · 150 KiB
+                {$messages.scene_compression_note()}
               </p>
               <button
                 type="button"
@@ -223,7 +224,9 @@
                 disabled={sending}
                 onclick={sendImage}
               >
-                {sending ? "Compressing…" : "Choose image"}
+                {sending
+                  ? $messages.scene_compressing()
+                  : $messages.scene_choose_image()}
               </button>
             </div>
           </div>

@@ -13,6 +13,7 @@
   import PanelMessage from "./panel-message.svelte";
   import type { RegisterPanel } from "./types";
   import Info from "$lib/icons/info.svelte";
+  import { errorMessage, messages } from "$lib/i18n";
 
   let { register }: { register: RegisterPanel } = $props();
 
@@ -44,11 +45,11 @@
     try {
       await commands.openActionWindow(
         "friend",
-        "Add Friend",
+        $messages.action_add_friend_title(),
         "/control-panel/add/friend",
       );
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
     } finally {
       busy = false;
     }
@@ -57,7 +58,7 @@
   async function apply() {
     if (mode === "browse") return true;
     if (mode === "remove" && !selected) {
-      error = "The selected friend no longer exists.";
+      error = $messages.error_friend_missing();
       return false;
     }
 
@@ -71,7 +72,7 @@
       reset();
       return true;
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
       return false;
     } finally {
       busy = false;
@@ -82,20 +83,20 @@
 <div class="flex h-full min-h-0 flex-col gap-2">
   {#if error || $friendsListenerError || $friendStatusesListenerError}
     <PanelMessage kind="error"
-      >{error ||
-        $friendsListenerError ||
-        $friendStatusesListenerError}</PanelMessage
+      >{errorMessage(
+        error || $friendsListenerError || $friendStatusesListenerError,
+      )}</PanelMessage
     >
   {/if}
 
   {#if mode === "remove" && selected}
     <PanelMessage kind="warning">
-      Applying will remove <strong
-        >{friendName(selected, "Unknown friend")}</strong
-      >. They will immediately go offline and stop receiving your activity.
+      {$messages.friends_remove_prefix()}<strong
+        >{friendName(selected, $messages.common_unknown_friend())}</strong
+      >{$messages.friends_remove_suffix()}
     </PanelMessage>
     <button class="btn w-fit" type="button" onclick={() => (mode = "browse")}
-      >Keep friend</button
+      >{$messages.friends_keep()}</button
     >
   {:else}
     <div
@@ -104,20 +105,22 @@
       <div
         class="grid grid-cols-[1fr_4.5rem] border-b border-base-300 bg-base-200 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-base-content/60"
       >
-        <span>Name</span><span>Status</span>
+        <span>{$messages.common_name()}</span><span
+          >{$messages.common_status()}</span
+        >
       </div>
       <div
         class="min-h-0 flex-1 overflow-y-auto"
         role="listbox"
-        aria-label="Friends"
+        aria-label={$messages.friends_list_label()}
       >
         {#if $friends.length === 0}
           <div
             class="grid h-full min-h-36 place-content-center px-8 text-center"
           >
-            <p class="text-xs font-bold">No friends yet</p>
+            <p class="text-xs font-bold">{$messages.friends_empty()}</p>
             <p class="mt-1 text-xs text-base-content/60">
-              Add someone using their public key.
+              {$messages.friends_empty_help()}
             </p>
           </div>
         {:else}
@@ -136,12 +139,15 @@
                   <strong
                     class:italic={!friend.displayName}
                     class="block truncate"
-                    >{friendName(friend, "Unknown friend")}</strong
+                    >{friendName(
+                      friend,
+                      $messages.common_unknown_friend(),
+                    )}</strong
                   >
                   {#if !friend.displayName}
                     <div
                       class="tooltip tooltip-primary"
-                      data-tip={"Will be resolved when they're online"}
+                      data-tip={$messages.friends_resolve_online()}
                     >
                       <div class="*:size-3 opacity-50">
                         <Info />
@@ -149,14 +155,16 @@
                     </div>
                   {/if}
                 </div>
-                <span class="block truncate font-mono text-[9px] opacity-65"
+                <span class="block truncate text-[9px] opacity-65"
                   >{friend.id}</span
                 >
               </span>
               <span class="flex items-center gap-1.5">
                 <span class:status-success={online} class="status shadow-none"
                 ></span>
-                {online ? "Online" : "Offline"}
+                {online
+                  ? $messages.common_online()
+                  : $messages.common_offline()}
               </span>
             </button>
           {/each}
@@ -169,13 +177,13 @@
         class="btn"
         type="button"
         disabled={busy}
-        onclick={openAddActionWindow}>Add…</button
+        onclick={openAddActionWindow}>{$messages.common_add()}</button
       >
       <button
         class="btn"
         type="button"
         disabled={!selected}
-        onclick={() => (mode = "remove")}>Remove</button
+        onclick={() => (mode = "remove")}>{$messages.common_remove()}</button
       >
     </div>
   {/if}

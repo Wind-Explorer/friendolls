@@ -160,7 +160,10 @@ pub fn open_window(app_handle: &AppHandle) -> Result<tauri::WebviewWindow, Strin
         WINDOW_LABEL,
         WebviewUrl::App("/scene".into()),
     )
-    .title("Scene")
+    .title(crate::settings::text(
+        app_handle,
+        crate::settings::NativeText::SceneTitle,
+    ))
     .inner_size(800.0, 600.0)
     .resizable(false)
     .maximizable(false)

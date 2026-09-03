@@ -40,6 +40,7 @@ specta-typescript = { version = "0.0.9" }
 uuid = { version = "1", features = ["v4"] }
 webp = { version = "0.3.1", default-features = false }
 friendolls-common = { path = "../src-common" }
+sys-locale = "0.3.2"
 
 [dev-dependencies]
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }

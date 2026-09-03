@@ -33,7 +33,10 @@ pub async fn pick_and_send_image(
     let Some(file) = app
         .dialog()
         .file()
-        .add_filter("Images", &["png", "jpg", "jpeg", "gif", "webp"])
+        .add_filter(
+            crate::settings::text(&app, crate::settings::NativeText::Images),
+            &["png", "jpg", "jpeg", "gif", "webp"],
+        )
         .blocking_pick_file()
     else {
         return Ok(false);

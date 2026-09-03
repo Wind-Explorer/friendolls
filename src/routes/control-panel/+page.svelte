@@ -10,12 +10,13 @@
   } from "$lib/components/control-panel/types";
   import { getVersion } from "@tauri-apps/api/app";
   import { onMount } from "svelte";
+  import { messages } from "$lib/i18n";
 
   const tabs = [
-    { id: "scene", label: "Scene" },
-    { id: "general", label: "Account" },
-    { id: "friends", label: "Friends" },
-    { id: "network", label: "Network" },
+    { id: "scene", label: "control_tab_scene" },
+    { id: "general", label: "control_tab_account" },
+    { id: "friends", label: "control_tab_friends" },
+    { id: "network", label: "control_tab_network" },
   ] as const;
   type TabId = (typeof tabs)[number]["id"];
 
@@ -30,6 +31,10 @@
   let anyDirty = $derived(tabs.some((tab) => panelStates[tab.id].dirty));
   let anyBusy = $derived(tabs.some((tab) => panelStates[tab.id].busy));
   let appVersion = $state("");
+
+  $effect(() => {
+    void getCurrentWindow().setTitle($messages.control_window_title());
+  });
 
   onMount(() => {
     getVersion().then((v) => {
@@ -81,7 +86,7 @@
   }
 </script>
 
-<svelte:head><title>Friendolls Properties</title></svelte:head>
+<svelte:head><title>{$messages.control_window_title()}</title></svelte:head>
 
 <main
   class="relative flex h-full min-h-0 flex-col overflow-hidden bg-base-100 p-2 text-base-content"
@@ -96,7 +101,7 @@
         type="radio"
         name="control_panel_tabs"
         class="tab text-xs"
-        aria-label={tab.label}
+        aria-label={$messages[tab.label]()}
         value={tab.id}
         bind:group={activeTab}
       />
@@ -127,19 +132,22 @@
       class="btn min-w-16"
       type="button"
       disabled={anyBusy}
-      onclick={confirm}>OK</button
+      onclick={confirm}>{$messages.common_ok()}</button
     >
     <button
       class="btn min-w-16"
       type="button"
       disabled={anyBusy}
-      onclick={cancel}>Cancel</button
+      onclick={cancel}>{$messages.common_cancel()}</button
     >
     <button
       class="btn min-w-16"
       type="button"
       disabled={!anyDirty || anyBusy}
-      onclick={applyAll}>{anyBusy ? "Applying…" : "Apply"}</button
+      onclick={applyAll}
+      >{anyBusy
+        ? $messages.common_applying()
+        : $messages.common_apply()}</button
     >
   </div>
 </main>

@@ -8,6 +8,7 @@
   import { onMount } from "svelte";
   import PanelMessage from "./panel-message.svelte";
   import type { RegisterPanel } from "./types";
+  import { errorMessage, messages } from "$lib/i18n";
 
   let { register }: { register: RegisterPanel } = $props();
 
@@ -41,11 +42,11 @@
     try {
       await commands.openActionWindow(
         "network",
-        "Add Server",
+        $messages.action_add_server_title(),
         "/control-panel/add/network",
       );
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
     } finally {
       busy = false;
     }
@@ -57,11 +58,11 @@
     try {
       await commands.openActionWindow(
         `network-edit-${id}`,
-        "Edit Server",
+        $messages.action_edit_server_title(),
         `/control-panel/edit/network/${encodeURIComponent(id)}`,
       );
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
     } finally {
       busy = false;
     }
@@ -79,7 +80,7 @@
     try {
       await commands.reorderRemotes(ordered.map((remote) => remote.id));
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
     } finally {
       busy = false;
     }
@@ -93,7 +94,7 @@
   async function apply() {
     if (mode === "browse") return true;
     if (mode === "remove" && !selected) {
-      error = "The selected server no longer exists.";
+      error = $messages.error_server_missing();
       return false;
     }
 
@@ -107,7 +108,7 @@
       reset();
       return true;
     } catch (cause) {
-      error = String(cause);
+      error = errorMessage(cause);
       return false;
     } finally {
       busy = false;
@@ -118,19 +119,20 @@
 <div class="flex h-full min-h-0 flex-col gap-2">
   {#if error || $remotesListenerError || $connectionStatusesListenerError}
     <PanelMessage kind="error"
-      >{error ||
-        $remotesListenerError ||
-        $connectionStatusesListenerError}</PanelMessage
+      >{errorMessage(
+        error || $remotesListenerError || $connectionStatusesListenerError,
+      )}</PanelMessage
     >
   {/if}
 
   {#if mode === "remove" && selected}
     <PanelMessage kind="warning">
-      Applying will remove <strong>{selected.name ?? selected.address}</strong>.
-      Existing connections through this server may stop.
+      {$messages.network_remove_prefix()}<strong
+        >{selected.name ?? selected.address}</strong
+      >{$messages.network_existing_connections_stop()}
     </PanelMessage>
     <button class="btn w-fit" type="button" onclick={() => (mode = "browse")}
-      >Keep server</button
+      >{$messages.network_keep()}</button
     >
   {:else}
     <div
@@ -139,20 +141,22 @@
       <div
         class="grid grid-cols-[1fr_5.5rem_3.5rem] border-b border-base-300 bg-base-200 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-base-content/60"
       >
-        <span>Server</span><span>Connection</span><span>Priority</span>
+        <span>{$messages.network_server()}</span><span
+          >{$messages.network_connection()}</span
+        ><span>{$messages.network_priority()}</span>
       </div>
       <div
         class="min-h-0 flex-1 overflow-y-auto"
         role="group"
-        aria-label="Configured servers"
+        aria-label={$messages.network_configured_servers()}
       >
         {#if $remotes.length === 0}
           <div
             class="grid h-full min-h-36 place-content-center px-8 text-center"
           >
-            <p class="text-xs font-bold">No servers configured</p>
+            <p class="text-xs font-bold">{$messages.network_no_servers()}</p>
             <p class="mt-1 text-xs text-base-content/60">
-              Add a server to connect with friends.
+              {$messages.network_empty_help()}
             </p>
           </div>
         {:else}
@@ -185,22 +189,26 @@
                   class:status-warning={state === "connecting"}
                   class="status shadow-none"
                 ></span>
-                {state}
+                {state === "connected"
+                  ? $messages.network_connected()
+                  : state === "connecting"
+                    ? $messages.network_connecting()
+                    : $messages.network_disconnected()}
               </span>
               <span class="flex justify-end gap-0.5">
                 <button
                   class="btn btn-xs px-1"
                   type="button"
-                  aria-label={`Increase priority for ${remote.name ?? remote.address}`}
-                  title="Move up"
+                  aria-label={`${$messages.network_move_up()}: ${remote.name ?? remote.address}`}
+                  title={$messages.network_move_up()}
                   disabled={busy || index === 0}
                   onclick={() => moveRemote(remote.id, -1)}>↑</button
                 >
                 <button
                   class="btn btn-xs px-1"
                   type="button"
-                  aria-label={`Decrease priority for ${remote.name ?? remote.address}`}
-                  title="Move down"
+                  aria-label={`${$messages.network_move_down()}: ${remote.name ?? remote.address}`}
+                  title={$messages.network_move_down()}
                   disabled={busy || index === $remotes.length - 1}
                   onclick={() => moveRemote(remote.id, 1)}>↓</button
                 >
@@ -216,20 +224,20 @@
         class="btn"
         type="button"
         disabled={busy}
-        onclick={openAddActionWindow}>Add…</button
+        onclick={openAddActionWindow}>{$messages.common_add()}</button
       >
       <div class="flex flex-row gap-1.5">
         <button
           class="btn join-item"
           type="button"
           disabled={!selected || busy}
-          onclick={() => selected && openEditWindow(selected.id)}>Edit…</button
+          onclick={() => selected && openEditWindow(selected.id)}>{$messages.common_edit()}</button
         >
         <button
           class="btn join-item"
           type="button"
           disabled={!selected}
-          onclick={() => (mode = "remove")}>Remove</button
+          onclick={() => (mode = "remove")}>{$messages.common_remove()}</button
         >
       </div>
     </div>

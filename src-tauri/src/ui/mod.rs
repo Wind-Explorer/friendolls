@@ -15,3 +15,7 @@ pub fn init(app_handle: &AppHandle) {
     control_panel::init(app_handle);
     tray::init(app_handle);
 }
+
+pub fn refresh_locale(app_handle: &AppHandle) {
+    tray::refresh_locale(app_handle);
+}

@@ -21,7 +21,10 @@ fn show(handle: &AppHandle, accessibility_only: bool) -> Result<(), String> {
     };
     let window =
         tauri::WebviewWindowBuilder::new(handle, WINDOW_LABEL, WebviewUrl::App(page.into()))
-            .title("Friendolls Setup")
+            .title(crate::settings::text(
+                handle,
+                crate::settings::NativeText::OnboardingTitle,
+            ))
             .inner_size(680.0, 520.0)
             .min_inner_size(680.0, 520.0)
             .resizable(false)

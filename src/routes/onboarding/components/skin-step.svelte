@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { SceneConfiguration, User } from "$lib/bindings";
   import PuppetPreview from "../../scene/components/renderer/puppet/preview.svelte";
+  import { messages } from "$lib/i18n";
 
   let {
     profile,
@@ -34,7 +35,7 @@
     </div>
   </div>
   <fieldset class="fieldset border border-base-300 bg-base-100 p-4">
-    <legend class="fieldset-legend px-1">Puppet skin</legend>
+    <legend class="fieldset-legend px-1">{$messages.onboarding_skin_legend()}</legend>
     {#if profile.skinHash}
       <label class="label cursor-pointer justify-start gap-2">
         <input
@@ -45,7 +46,7 @@
           bind:group={skinMode}
           disabled={busy}
         />
-        Keep current skin
+        {$messages.onboarding_skin_keep()}
       </label>
     {/if}
     <label class="label cursor-pointer justify-start gap-2">
@@ -57,7 +58,7 @@
         bind:group={skinMode}
         disabled={busy}
       />
-      Use default skin
+      {$messages.onboarding_skin_default()}
     </label>
     <label class="label cursor-pointer justify-start gap-2">
       <input
@@ -68,7 +69,7 @@
         bind:group={skinMode}
         disabled={busy}
       />
-      Choose a PNG file
+      {$messages.onboarding_skin_choose_png()}
     </label>
     <input
       class="file-input file-input-sm mt-2 w-full"
@@ -77,6 +78,6 @@
       disabled={busy}
       onchange={(event) => onselect(event.currentTarget.files?.[0] ?? null)}
     />
-    <p class="label">Skins must be exactly 64×64 pixels.</p>
+    <p class="label">{$messages.onboarding_skin_help()}</p>
   </fieldset>
 </div>

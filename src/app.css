@@ -87,14 +87,26 @@ input {
 }
 
 @font-face {
-  font-family: "W95F";
+  font-family: "w95f";
   src: url("/w95f.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ark-pixel-12px-proportional-zh_cn";
+  src: url("/ark-pixel-12px-proportional-zh_cn.ttf.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
 
 @theme {
-  --font-custom: "W95F", sans-serif;
+  --font-en: "w95f", "Cascadia Code";
+  --font-zh-cn:
+    "w95f", "ark-pixel-12px-proportional-zh_cn", "PingFang SC",
+    "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
 }
 
 * {

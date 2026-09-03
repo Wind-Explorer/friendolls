@@ -9,6 +9,7 @@
   import PuppetPreview from "../../../routes/scene/components/renderer/puppet/preview.svelte";
   import PanelMessage from "./panel-message.svelte";
   import type { RegisterPanel } from "./types";
+  import { errorMessage, messages } from "$lib/i18n";
 
   let { register }: { register: RegisterPanel } = $props();
 
@@ -114,7 +115,7 @@
     } catch (cause) {
       dirty =
         hasConfigurationChanges() || skinFile !== null || pendingSkinReset;
-      error = String(cause);
+      error = errorMessage(cause);
       return false;
     } finally {
       busy = false;
@@ -125,7 +126,9 @@
 <div class="space-y-1">
   {#if error || $sceneConfigurationListenerError || $profileListenerError}
     <PanelMessage kind="error">
-      {error || $sceneConfigurationListenerError || $profileListenerError}
+      {errorMessage(
+        error || $sceneConfigurationListenerError || $profileListenerError,
+      )}
     </PanelMessage>
   {/if}
 
@@ -142,8 +145,8 @@
                 class="flex flex-row size-full items-end justify-between text-[10px] text-primary p-1"
               >
                 <div class="text-start flex flex-col">
-                  <p>Scale</p>
-                  <p>Opacity</p>
+                  <p>{$messages.scene_scale()}</p>
+                  <p>{$messages.scene_opacity()}</p>
                 </div>
                 <div class="text-end flex flex-col">
                   <p>{(puppetScale * 100).toFixed(0)}%</p>
@@ -164,7 +167,7 @@
         {:else}
           <div
             class="skeleton aspect-square size-full"
-            aria-label="Loading puppet preview"
+            aria-label={$messages.scene_loading_preview()}
           ></div>
         {/if}
       </div>
@@ -172,9 +175,13 @@
 
     <div class="min-w-0 space-y-2">
       <fieldset class="fieldset border border-base-300 bg-base-100 p-3 pt-1">
-        <legend class="fieldset-legend px-1">All puppets</legend>
+        <legend class="fieldset-legend px-1"
+          >{$messages.scene_all_puppets()}</legend
+        >
         <div>
-          <label class="fieldset-label" for="puppet-scale">Scale</label>
+          <label class="fieldset-label" for="puppet-scale"
+            >{$messages.scene_scale()}</label
+          >
           <input
             id="puppet-scale"
             class="range range-sm"
@@ -190,7 +197,9 @@
         </div>
 
         <div>
-          <label class="fieldset-label" for="puppet-opacity">Opacity</label>
+          <label class="fieldset-label" for="puppet-opacity"
+            >{$messages.scene_opacity()}</label
+          >
           <input
             id="puppet-opacity"
             class="range range-sm"
@@ -212,7 +221,7 @@
           disabled={!$profile || busy}
           onclick={() => skinInput?.click()}
         >
-          Choose a skin
+          {$messages.scene_choose_skin()}
         </button>
         <button
           class="btn"
@@ -220,7 +229,7 @@
           disabled={!$profile || busy || (!$profile.skinHash && !skinFile)}
           onclick={resetSkin}
         >
-          Reset
+          {$messages.common_reset()}
         </button>
         <input
           id="skin-file"
@@ -235,7 +244,7 @@
     </div>
   </div>
   <fieldset class="fieldset border border-base-300 bg-base-100 p-3 pt-1">
-    <legend class="fieldset-legend px-1">Puppets reposition</legend>
+    <legend class="fieldset-legend px-1">{$messages.puppet_movement()}</legend>
     <div class="grid grid-cols-2 gap-2">
       <label
         class:border-primary={puppetMovementMode === "free"}
@@ -243,7 +252,7 @@
       >
         <img
           src="/puppet-movement-free.svg"
-          alt="Puppets moving freely across the full viewport"
+          alt={$messages.puppet_free_alt()}
           class="w-full object-cover bg-linear-to-b from-base-100 to-base-300"
           class:from-primary-content={puppetMovementMode === "free"}
         />
@@ -252,7 +261,7 @@
           class:bg-primary-content={puppetMovementMode === "free"}
           class:text-primary={puppetMovementMode === "free"}
         >
-          <span class="text-xs font-medium">Freeroam around</span>
+          <span class="text-xs font-medium">{$messages.puppet_free()}</span>
           <input
             class="hidden"
             type="radio"
@@ -275,7 +284,7 @@
       >
         <img
           src="/puppet-movement-bottom.svg"
-          alt="Puppets moving along the bottom of the viewport"
+          alt={$messages.puppet_bottom_alt()}
           class="w-full object-cover bg-linear-to-b from-base-100 to-base-300"
           class:from-primary-content={puppetMovementMode === "bottom"}
         />
@@ -283,7 +292,7 @@
           class="card-body items-center gap-2 p-2 text-center"
           class:bg-primary-content={puppetMovementMode === "bottom"}
         >
-          <span class="text-xs font-medium">Stay on the ground</span>
+          <span class="text-xs font-medium">{$messages.puppet_bottom()}</span>
           <input
             class="hidden"
             type="radio"

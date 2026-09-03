@@ -1,5 +1,6 @@
 <script lang="ts">
   import PanelMessage from "$lib/components/control-panel/panel-message.svelte";
+  import { messages } from "$lib/i18n";
 
   let {
     permissionGranted,
@@ -12,20 +13,16 @@
 <div class="space-y-4">
   <PanelMessage kind={permissionGranted ? "success" : "warning"}>
     {permissionGranted
-      ? "Accessibility access is granted. Puppets can now follow your cursor."
-      : "Accessibility access is still waiting for your approval."}
+      ? $messages.accessibility_granted()
+      : $messages.accessibility_waiting()}
   </PanelMessage>
   <fieldset class="fieldset border border-base-300 bg-base-100 p-4">
-    <legend class="fieldset-legend px-1">Why Friendolls needs this</legend>
-    <p class="text-xs leading-relaxed">
-      Friendolls reads the system cursor position so your puppet can follow you
-      and your friends can see that movement. It does not use Accessibility
-      access to read typed text, click buttons, or control other apps.
-    </p>
+    <legend class="fieldset-legend px-1">{$messages.accessibility_why()}</legend>
+    <p class="text-xs leading-relaxed">{$messages.accessibility_explanation()}</p>
     <ol class="mt-3 list-decimal space-y-1 pl-5 text-xs">
-      <li>Click <strong>Open Accessibility Settings</strong>.</li>
-      <li>Turn on Friendolls in Privacy &amp; Security → Accessibility.</li>
-      <li>Return here; this wizard confirms the change automatically.</li>
+      <li>{$messages.accessibility_step_open()}</li>
+      <li>{$messages.accessibility_step_enable()}</li>
+      <li>{$messages.accessibility_step_return()}</li>
     </ol>
     <button
       class="btn mt-4 w-fit"
@@ -33,7 +30,9 @@
       disabled={busy || permissionGranted}
       onclick={onrequest}
     >
-      {permissionGranted ? "Access Granted" : "Open Accessibility Settings…"}
+      {permissionGranted
+        ? $messages.accessibility_access_granted()
+        : $messages.accessibility_open_settings()}
     </button>
   </fieldset>
 </div>
