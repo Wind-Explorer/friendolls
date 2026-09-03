@@ -17,6 +17,7 @@ pub fn open(handle: &AppHandle) -> Result<(), String> {
         .minimizable(false)
         .maximizable(false)
         .decorations(false)
+        .transparent(true)
         .shadow(false)
         .skip_taskbar(true)
         .always_on_top(true)
