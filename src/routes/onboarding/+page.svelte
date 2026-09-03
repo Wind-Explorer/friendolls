@@ -20,6 +20,7 @@
   import SkinStep from "./components/skin-step.svelte";
   import WelcomeStep from "./components/welcome-step.svelte";
   import { errorMessage, messages, type MessageCatalog } from "$lib/i18n";
+  import { getVersion } from "@tauri-apps/api/app";
 
   type StepId =
     | "welcome"
@@ -101,6 +102,14 @@
   let savedServerId = $state<string | null>(null);
   let friendId = $state("");
   let savedFriendId = $state<string | null>(null);
+
+  let appVersion = $state("");
+
+  onMount(() => {
+    getVersion().then((v) => {
+      appVersion = v;
+    });
+  });
 
   let steps = $derived(
     remediation
@@ -314,7 +323,7 @@
           </div>
         {/each}
       </div>
-      <p class="text-[10px] opacity-70">Friendolls 0.1</p>
+      <p class="text-[10px] opacity-70">Friendolls v{appVersion}</p>
     </aside>
 
     <section class="flex min-h-0 flex-col bg-base-100">
