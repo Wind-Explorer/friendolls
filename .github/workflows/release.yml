@@ -64,6 +64,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
+      - name: Cache Bun packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-bun-
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          shared-key: ${{ matrix.rust_target || 'native' }}
       - run: bun install --frozen-lockfile
       - name: Build and upload Tauri bundles
         uses: tauri-apps/tauri-action@v0
@@ -90,8 +100,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ghcr.io/wind-explorer/friendolls-server:latest
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
