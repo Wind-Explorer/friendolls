@@ -4,11 +4,19 @@
   import { onMount } from "svelte";
   import { commands, type RemoteInput } from "$lib/bindings";
   import PanelMessage from "$lib/components/control-panel/panel-message.svelte";
+  import ServerEndpointFields from "$lib/components/server-endpoint-fields.svelte";
   import { errorMessage, messages } from "$lib/i18n";
+  import {
+    containsScheme,
+    splitServerAddress,
+    storedServerAddress,
+    type ServerConnectionType,
+  } from "$lib/server-endpoint";
 
   let name = $state("");
   let address = $state("");
   let port = $state("");
+  let connectionType = $state<ServerConnectionType>("https");
   let loading = $state(true);
   let busy = $state(false);
   let available = $state(false);
@@ -38,7 +46,9 @@
           return;
         }
         name = remote.name ?? "";
-        address = remote.address;
+        const endpoint = splitServerAddress(remote.address);
+        address = endpoint.address;
+        connectionType = endpoint.connectionType;
         port = remote.port?.toString() ?? "";
         available = true;
       })
@@ -64,6 +74,10 @@
       error = $messages.error_server_address_required();
       return null;
     }
+    if (containsScheme(address)) {
+      error = $messages.error_server_address_scheme();
+      return null;
+    }
     if (
       parsedPort !== null &&
       (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535)
@@ -72,7 +86,7 @@
       return null;
     }
     return {
-      address: address.trim(),
+      address: storedServerAddress(address, connectionType),
       name: name.trim() || null,
       port: parsedPort,
     };
@@ -135,27 +149,13 @@
         maxlength="64"
         autocomplete="off"
       />
-      <label class="fieldset-label mt-1" for="remote-address">{$messages.common_address()}</label>
-      <input
-        id="remote-address"
-        class="input w-full"
-        bind:value={address}
-        placeholder="example.net"
-        autocomplete="off"
+      <ServerEndpointFields
+        idPrefix="remote"
+        bind:address
+        bind:port
+        bind:connectionType
+        disabled={loading || busy || !available}
         required
-      />
-      <label class="fieldset-label mt-1" for="remote-port"
-        >{$messages.common_optional_port()}</label
-      >
-      <input
-        id="remote-port"
-        class="input w-28"
-        bind:value={port}
-        type="number"
-        min="1"
-        max="65535"
-        inputmode="numeric"
-        placeholder="27520"
       />
     </fieldset>
   </div>

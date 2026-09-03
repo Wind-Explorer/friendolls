@@ -20,6 +20,11 @@
   import SkinStep from "./components/skin-step.svelte";
   import WelcomeStep from "./components/welcome-step.svelte";
   import { errorMessage, messages, type MessageCatalog } from "$lib/i18n";
+  import {
+    containsScheme,
+    storedServerAddress,
+    type ServerConnectionType,
+  } from "$lib/server-endpoint";
   import { getVersion } from "@tauri-apps/api/app";
 
   type StepId =
@@ -99,6 +104,7 @@
   let serverName = $state("");
   let serverAddress = $state("");
   let serverPort = $state("");
+  let serverConnectionType = $state<ServerConnectionType>("https");
   let savedServerId = $state<string | null>(null);
   let friendId = $state("");
   let savedFriendId = $state<string | null>(null);
@@ -191,6 +197,9 @@
 
   function remoteInput(): RemoteInput | null {
     if (!serverAddress.trim()) return null;
+    if (containsScheme(serverAddress)) {
+      throw new Error($messages.error_server_address_scheme());
+    }
     const port = serverPort ? Number(serverPort) : null;
     if (
       port !== null &&
@@ -199,7 +208,7 @@
       throw new Error($messages.error_port_invalid());
     }
     return {
-      address: serverAddress.trim(),
+      address: storedServerAddress(serverAddress, serverConnectionType),
       name: serverName.trim() || null,
       port,
     };
@@ -370,6 +379,7 @@
               bind:serverName
               bind:serverAddress
               bind:serverPort
+              bind:serverConnectionType
               {busy}
             />
           {:else if step.id === "friend"}

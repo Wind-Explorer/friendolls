@@ -1,16 +1,20 @@
 <script lang="ts">
   import PanelMessage from "$lib/components/control-panel/panel-message.svelte";
+  import ServerEndpointFields from "$lib/components/server-endpoint-fields.svelte";
   import { messages } from "$lib/i18n";
+  import type { ServerConnectionType } from "$lib/server-endpoint";
 
   let {
     serverName = $bindable(),
     serverAddress = $bindable(),
     serverPort = $bindable(),
+    serverConnectionType = $bindable(),
     busy,
   }: {
     serverName: string;
     serverAddress: string;
     serverPort: string;
+    serverConnectionType: ServerConnectionType;
     busy: boolean;
   } = $props();
 </script>
@@ -29,25 +33,12 @@
     autocomplete="off"
     disabled={busy}
   />
-  <label class="label mt-1" for="onboarding-server-address">{$messages.common_address()}</label>
-  <input
-    id="onboarding-server-address"
-    class="input w-full"
-    bind:value={serverAddress}
-    placeholder="example.net"
-    autocomplete="off"
+  <ServerEndpointFields
+    idPrefix="onboarding-server"
+    bind:address={serverAddress}
+    bind:port={serverPort}
+    bind:connectionType={serverConnectionType}
     disabled={busy}
-  />
-  <label class="label mt-1" for="onboarding-server-port">{$messages.common_optional_port()}</label>
-  <input
-    id="onboarding-server-port"
-    class="input w-28"
-    bind:value={serverPort}
-    type="number"
-    min="1"
-    max="65535"
-    inputmode="numeric"
-    placeholder="27520"
-    disabled={busy}
+    labelClass="label"
   />
 </fieldset>

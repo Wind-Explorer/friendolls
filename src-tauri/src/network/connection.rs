@@ -397,12 +397,15 @@ fn url(remote: &Remote) -> String {
         .or_else(|| address.strip_prefix("ws://"))
         .or_else(|| address.strip_prefix("wss://"))
         .unwrap_or(address);
-    let scheme = if remote.address.starts_with("https://") || remote.address.starts_with("wss://") {
-        "wss"
-    } else {
-        "ws"
-    };
-    let port = remote.port.unwrap_or(DEFAULT_SERVER_PORT);
+    let (scheme, default_port) =
+        if remote.address.starts_with("https://") || remote.address.starts_with("wss://") {
+            ("wss", 443)
+        } else if remote.address.starts_with("http://") || remote.address.starts_with("ws://") {
+            ("ws", 80)
+        } else {
+            ("ws", DEFAULT_SERVER_PORT)
+        };
+    let port = remote.port.unwrap_or(default_port);
     format!("{scheme}://{address}:{port}/v1/ws")
 }
 
@@ -421,10 +424,26 @@ mod tests {
     }
 
     #[test]
-    fn url_uses_default_server_port_when_unspecified() {
+    fn url_uses_direct_server_port_when_unspecified() {
         assert_eq!(
             url(&remote("example.net", None)),
             "ws://example.net:27520/v1/ws"
+        );
+    }
+
+    #[test]
+    fn url_uses_https_default_port_when_unspecified() {
+        assert_eq!(
+            url(&remote("https://example.net", None)),
+            "wss://example.net:443/v1/ws"
+        );
+    }
+
+    #[test]
+    fn url_uses_http_default_port_when_unspecified() {
+        assert_eq!(
+            url(&remote("http://example.net", None)),
+            "ws://example.net:80/v1/ws"
         );
     }
 

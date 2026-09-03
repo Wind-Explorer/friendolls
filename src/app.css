@@ -81,9 +81,16 @@
   pointer-events: auto;
 }
 
-button,
-input {
+button {
   @apply btn-sm;
+}
+
+input {
+  @apply input-sm;
+}
+
+select {
+  @apply select-sm;
 }
 
 @font-face {
