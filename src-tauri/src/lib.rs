@@ -47,7 +47,11 @@ pub fn run() {
         )
         .expect("Failed to export TypeScript bindings");
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(ui::activation_policy::ActivationPolicy::default());
+
+    builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,

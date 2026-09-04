@@ -27,6 +27,7 @@ async fn show(handle: &AppHandle, accessibility_only: bool) -> Result<(), String
             ))
             .inner_size(680.0, 520.0)
             .min_inner_size(680.0, 520.0)
+            .transparent(true)
             .resizable(false)
             .maximizable(false)
             .center()

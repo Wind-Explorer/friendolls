@@ -18,14 +18,8 @@ pub fn init(handle: &AppHandle) {
             .title("Friendolls Debug")
             .inner_size(800.0, 600.0)
             .min_inner_size(500.0, 400.0)
+            .transparent(true)
             .visible(true);
 
-    let window = builder.build().unwrap();
-    let window_c = window.clone();
-    window.on_window_event(move |event: &tauri::WindowEvent| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            window_c.hide().unwrap();
-        }
-    });
+    builder.build().unwrap();
 }

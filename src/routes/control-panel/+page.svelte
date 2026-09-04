@@ -68,21 +68,21 @@
     return true;
   }
 
-  async function hideWindow() {
+  async function closeWindow() {
     try {
-      await getCurrentWindow().hide();
+      await getCurrentWindow().close();
     } catch (error) {
-      console.error("failed to hide control panel", error);
+      console.error("failed to close control panel", error);
     }
   }
 
   async function confirm() {
-    if (await applyAll()) await hideWindow();
+    if (await applyAll()) await closeWindow();
   }
 
   function cancel() {
     tabs.forEach((tab) => actions[tab.id]?.reset());
-    void hideWindow();
+    void closeWindow();
   }
 </script>
 

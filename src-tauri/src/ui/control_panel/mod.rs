@@ -3,40 +3,25 @@ use tauri::{AppHandle, Manager, WebviewUrl};
 const WINDOW_LABEL: &str = "control-panel";
 const ACTION_WINDOW_PREFIX: &str = "control-panel-action-";
 
-pub fn init(handle: &AppHandle) {
-    if let Some(window) = handle.get_webview_window(WINDOW_LABEL) {
-        window.hide().unwrap();
-        return;
-    };
-
-    let builder = tauri::WebviewWindowBuilder::new(
-        handle,
-        WINDOW_LABEL,
-        WebviewUrl::App("/control-panel".into()),
-    )
-    .title("Friendolls")
-    .inner_size(400.0, 600.0)
-    .min_inner_size(400.0, 600.0)
-    .resizable(false)
-    .maximizable(false)
-    .center()
-    .visible(false);
-
-    let window = builder.build().unwrap();
-    window.hide().unwrap();
-    let window_c = window.clone();
-    window.on_window_event(move |event: &tauri::WindowEvent| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            window_c.hide().unwrap();
-        }
-    });
-}
-
 pub fn show(handle: &AppHandle) -> Result<(), String> {
-    let window = handle
-        .get_webview_window(WINDOW_LABEL)
-        .ok_or_else(|| "Control panel window was not created during startup.".to_string())?;
+    let window = if let Some(window) = handle.get_webview_window(WINDOW_LABEL) {
+        window
+    } else {
+        tauri::WebviewWindowBuilder::new(
+            handle,
+            WINDOW_LABEL,
+            WebviewUrl::App("/control-panel".into()),
+        )
+        .title("Friendolls")
+        .inner_size(400.0, 600.0)
+        .min_inner_size(400.0, 600.0)
+        .resizable(false)
+        .maximizable(false)
+        .transparent(true)
+        .center()
+        .build()
+        .map_err(|error| error.to_string())?
+    };
 
     window.unminimize().map_err(|error| error.to_string())?;
     window.show().map_err(|error| error.to_string())?;
@@ -84,6 +69,7 @@ pub async fn open_action_window(
         .resizable(false)
         .minimizable(false)
         .maximizable(false)
+        .transparent(true)
         .skip_taskbar(true)
         .center()
         .build()
