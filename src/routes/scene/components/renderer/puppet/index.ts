@@ -12,8 +12,9 @@ export class Puppet {
   constructor(
     readonly id: string,
     scale: number,
+    onChange: () => void,
   ) {
-    this.visual = new PuppetVisual(id);
+    this.visual = new PuppetVisual(id, onChange);
     this.root = this.visual.root;
     this.visual.setScale(scale);
     this.visual.setOpacity(1);
@@ -35,8 +36,7 @@ export class Puppet {
     this.visual.setSkin(skinHash);
     this.visual.setOpacity(opacity);
     if (frozen) {
-      this.visual.pause();
-      return;
+      return this.visual.pause(deltaSeconds);
     }
 
     world.normalizedPointToGroundPoint(
@@ -44,7 +44,7 @@ export class Puppet {
       state.position.y,
       this.targetGroundPosition,
     );
-    this.visual.updateMotion(
+    return this.visual.updateMotion(
       this.targetGroundPosition,
       state.isMoving,
       deltaSeconds,

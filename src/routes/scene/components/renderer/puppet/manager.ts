@@ -1,26 +1,32 @@
 import type { PuppetState } from "$lib/bindings";
-import type { PuppetScreenBounds } from "../types";
+import type { PuppetScreenBounds, SceneRenderInputs } from "../types";
 import type { World } from "../world";
 import { Puppet } from ".";
 
 export class PuppetManager {
   private readonly puppets = new Map<string, Puppet>();
 
-  constructor(private readonly world: World) {}
+  constructor(
+    private readonly world: World,
+    private readonly onChange: () => void,
+  ) {}
 
   update(
-    states: readonly PuppetState[],
-    scale: number,
-    idleOpacity: number,
-    selectedPuppetId: string | null,
+    {
+      puppets: states,
+      scale,
+      idleOpacity,
+      selectedPuppetId,
+      skinHashes,
+    }: SceneRenderInputs,
     deltaSeconds: number,
     elapsedSeconds: number,
-    skinHashes: ReadonlyMap<string, string | null>,
   ) {
     this.syncPuppets(states, scale);
 
+    let active = false;
     for (const state of states) {
-      this.puppets
+      const puppetActive = this.puppets
         .get(state.id)
         ?.update(
           state,
@@ -31,7 +37,9 @@ export class PuppetManager {
           skinHashes.get(state.id) ?? null,
           state.id === selectedPuppetId ? 1 : idleOpacity,
         );
+      active = puppetActive || active;
     }
+    return active;
   }
 
   screenBounds(): PuppetScreenBounds[] {
@@ -55,7 +63,7 @@ export class PuppetManager {
     for (const state of states) {
       if (this.puppets.has(state.id)) continue;
 
-      const puppet = new Puppet(state.id, scale);
+      const puppet = new Puppet(state.id, scale, this.onChange);
       this.puppets.set(puppet.id, puppet);
       this.world.addObject(puppet.root);
     }

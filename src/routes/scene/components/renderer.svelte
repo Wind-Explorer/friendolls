@@ -2,9 +2,9 @@
   import type { PuppetState } from "$lib/bindings";
   import { sceneConfiguration } from "$lib/listeners/scene-configuration";
   import { onDestroy, onMount } from "svelte";
-  import * as THREE from "three";
+  import { SceneScheduler } from "./renderer/scheduler";
   import { PuppetManager } from "./renderer/puppet/manager";
-  import type { PuppetScreenBounds } from "./renderer/types";
+  import type { PuppetScreenBounds, SceneRenderInputs } from "./renderer/types";
   import { World } from "./renderer/world";
 
   let {
@@ -20,41 +20,60 @@
   } = $props();
 
   let renderDiv = $state<HTMLDivElement | null>(null);
+  let renderInputs: SceneRenderInputs = $derived({
+    puppets,
+    scale: $sceneConfiguration.puppetScale,
+    idleOpacity: $sceneConfiguration.puppetOpacity,
+    selectedPuppetId,
+    skinHashes,
+  });
 
   let world: World | null = null;
   let puppetManager: PuppetManager | null = null;
   let resizeObserver: ResizeObserver | null = null;
-  let clock: THREE.Timer | null = null;
-  let animationFrameId = 0;
-  let lastBoundsUpdate = 0;
+  let scheduler: SceneScheduler | null = null;
   let previousBounds: PuppetScreenBounds[] = [];
+  let boundsPuppetIds = new Set<string>();
+  let lastBoundsUpdate = -Infinity;
 
-  function animate() {
-    if (!world || !puppetManager || !clock) return;
+  function animate(deltaSeconds: number, elapsedSeconds: number) {
+    if (!world || !puppetManager) return false;
 
-    animationFrameId = requestAnimationFrame(animate);
-
-    clock.update();
-    puppetManager.update(
-      puppets,
-      $sceneConfiguration.puppetScale,
-      $sceneConfiguration.puppetOpacity,
-      selectedPuppetId,
-      clock.getDelta(),
-      clock.getElapsed(),
-      skinHashes,
+    const active = puppetManager.update(
+      renderInputs,
+      deltaSeconds,
+      elapsedSeconds,
     );
     world.render();
 
-    const elapsed = clock.getElapsed();
-    if (elapsed - lastBoundsUpdate >= 1 / 30) {
-      lastBoundsUpdate = elapsed;
+    const membershipChanged =
+      boundsPuppetIds.size !== renderInputs.puppets.length ||
+      renderInputs.puppets.some(({ id }) => !boundsPuppetIds.has(id));
+    // Always flush the final pose; a sleeping scene has no later frame to do it.
+    if (
+      !active ||
+      membershipChanged ||
+      elapsedSeconds - lastBoundsUpdate >= 1 / 20
+    ) {
+      lastBoundsUpdate = elapsedSeconds;
       const nextBounds = puppetManager.screenBounds();
+      boundsPuppetIds = new Set(nextBounds.map(({ id }) => id));
       if (!sameBounds(previousBounds, nextBounds)) {
         previousBounds = nextBounds;
         onBoundsChange(nextBounds);
       }
     }
+
+    return active;
+  }
+
+  $effect(() => {
+    void renderInputs;
+    scheduler?.invalidate();
+  });
+
+  function syncVisibility() {
+    scheduler?.setSuspended(document.hidden);
   }
 
   function sameBounds(
@@ -78,20 +97,24 @@
     if (!renderDiv) return;
 
     world = new World(renderDiv);
-    puppetManager = new PuppetManager(world);
-    clock = new THREE.Timer();
-    clock.connect(document);
+    scheduler = new SceneScheduler(animate);
+    puppetManager = new PuppetManager(world, scheduler.invalidate);
 
-    resizeObserver = new ResizeObserver(world.resizeWorld);
+    resizeObserver = new ResizeObserver(() => {
+      world?.resizeWorld();
+      lastBoundsUpdate = -Infinity;
+      scheduler?.invalidate();
+    });
     resizeObserver.observe(renderDiv);
 
-    animate();
+    document.addEventListener("visibilitychange", syncVisibility);
+    syncVisibility();
   });
 
   onDestroy(() => {
-    cancelAnimationFrame(animationFrameId);
+    scheduler?.dispose();
+    document.removeEventListener("visibilitychange", syncVisibility);
     resizeObserver?.disconnect();
-    clock?.dispose();
     puppetManager?.dispose();
     world?.dispose();
     onBoundsChange([]);

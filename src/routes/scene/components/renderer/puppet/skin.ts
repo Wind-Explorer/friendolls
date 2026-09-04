@@ -126,6 +126,7 @@ export class PuppetSkin {
   constructor(
     private readonly userId: string,
     rig: PuppetRig,
+    private readonly onChange: () => void,
   ) {
     this.material = new THREE.MeshStandardMaterial({
       color: "white",
@@ -188,6 +189,7 @@ export class PuppetSkin {
         this.depthMaterial.map = texture;
         this.material.needsUpdate = true;
         this.depthMaterial.needsUpdate = true;
+        this.onChange();
       })
       .catch((error) =>
         console.error(`Failed to load skin for ${this.userId}`, error),

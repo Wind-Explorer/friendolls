@@ -39,12 +39,12 @@ export class PuppetVisual {
   private readonly animation: PuppetAnimation;
   private readonly skin: PuppetSkin;
 
-  constructor(userId: string) {
+  constructor(userId: string, onChange: () => void = () => {}) {
     this.rig = createRig();
     this.root = this.rig.root;
     this.animation = new PuppetAnimation(this.rig);
     const placeholderMaterial = this.rig.body.material;
-    this.skin = new PuppetSkin(userId, this.rig);
+    this.skin = new PuppetSkin(userId, this.rig, onChange);
     if (!Array.isArray(placeholderMaterial)) placeholderMaterial.dispose();
   }
 
@@ -77,7 +77,7 @@ export class PuppetVisual {
     deltaSeconds: number,
     elapsedSeconds: number,
   ) {
-    this.animation.update(
+    return this.animation.update(
       targetGroundPosition,
       isMoving,
       deltaSeconds,
@@ -90,8 +90,8 @@ export class PuppetVisual {
     this.animation.walk(elapsedSeconds);
   }
 
-  pause() {
-    this.animation.pause();
+  pause(deltaSeconds: number) {
+    return this.animation.pause(deltaSeconds);
   }
 
   dispose() {
