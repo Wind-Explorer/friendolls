@@ -173,7 +173,9 @@ async fn connect(
             changed = cursor_data.changed() => {
                 changed.map_err(|_| "cursor sender closed")?;
                 let payload = { cursor_data.borrow_and_update().clone() };
-                if let Some(payload) = payload {
+                if let Some(payload) = payload
+                    && friend_presence.has_online_friends(&remote.id)?
+                {
                     send(&mut writer, &ClientMessage::Signed {
                         signature: keypair.sign(&message_bytes(&payload)),
                         payload,
@@ -183,7 +185,9 @@ async fn connect(
             changed = foreground_app_data.changed() => {
                 changed.map_err(|_| "foreground-app sender closed")?;
                 let payload = { foreground_app_data.borrow_and_update().clone() };
-                if let Some(payload) = payload {
+                if let Some(payload) = payload
+                    && friend_presence.has_online_friends(&remote.id)?
+                {
                     send(&mut writer, &ClientMessage::Signed {
                         signature: keypair.sign(&message_bytes(&payload)),
                         payload,

@@ -95,6 +95,14 @@ impl Network {
     }
 
     pub fn send_live_data(&self, data: LiveData) {
+        let active_remotes = match self.friend_presence.active_remotes() {
+            Ok(remotes) if remotes.is_empty() => return,
+            Ok(remotes) => remotes,
+            Err(error) => {
+                eprintln!("failed to read friend presence for live data: {error}");
+                return;
+            }
+        };
         let sequence = match data.kind() {
             LiveDataKind::Cursor => self.next_cursor_sequence.fetch_add(1, Ordering::Relaxed),
             LiveDataKind::ForegroundApp => self
@@ -114,7 +122,10 @@ impl Network {
             eprintln!("failed to lock remote connections for live data");
             return;
         };
-        for connection in connections.values() {
+        for (remote_id, connection) in connections.iter() {
+            if !active_remotes.contains(remote_id) {
+                continue;
+            }
             match envelope.kind() {
                 LiveDataKind::Cursor => {
                     connection.cursor_sender.send_replace(Some(payload.clone()));

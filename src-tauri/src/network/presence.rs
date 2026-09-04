@@ -14,6 +14,16 @@ pub(super) struct Change {
 pub(super) struct FriendPresence(Mutex<HashMap<String, HashSet<String>>>);
 
 impl FriendPresence {
+    pub(super) fn active_remotes(&self) -> Result<HashSet<String>, String> {
+        let by_remote = self.0.lock().map_err(|error| error.to_string())?;
+        Ok(by_remote.keys().cloned().collect())
+    }
+
+    pub(super) fn has_online_friends(&self, remote_id: &str) -> Result<bool, String> {
+        let by_remote = self.0.lock().map_err(|error| error.to_string())?;
+        Ok(by_remote.contains_key(remote_id))
+    }
+
     pub(super) fn remotes_for(&self, friend_id: &str) -> Result<HashSet<String>, String> {
         let by_remote = self.0.lock().map_err(|error| error.to_string())?;
         Ok(by_remote
@@ -127,6 +137,67 @@ fn diff(
 #[cfg(test)]
 mod tests {
     use super::{Change, FriendPresence};
+
+    #[test]
+    fn live_data_routes_follow_each_remotes_online_friends() {
+        let presence = FriendPresence::default();
+        assert!(presence.active_remotes().unwrap().is_empty());
+        assert!(!presence.has_online_friends("remote-a").unwrap());
+
+        presence
+            .replace("remote-a", vec!["friend-a".into(), "friend-b".into()])
+            .unwrap();
+        presence.replace("remote-b", Vec::new()).unwrap();
+        assert_eq!(
+            presence.active_remotes().unwrap(),
+            ["remote-a".to_owned()].into()
+        );
+        assert!(!presence.has_online_friends("remote-b").unwrap());
+
+        presence
+            .update("remote-a", "friend-a".into(), false)
+            .unwrap();
+        assert!(presence.has_online_friends("remote-a").unwrap());
+        presence
+            .update("remote-a", "friend-b".into(), false)
+            .unwrap();
+        assert!(!presence.has_online_friends("remote-a").unwrap());
+        assert!(presence.active_remotes().unwrap().is_empty());
+
+        let change = presence
+            .update("remote-b", "friend-a".into(), true)
+            .unwrap()
+            .unwrap();
+        assert!(
+            change.route_added,
+            "resuming must trigger current-state publication"
+        );
+        assert!(presence.has_online_friends("remote-b").unwrap());
+        assert!(!presence.has_online_friends("remote-a").unwrap());
+    }
+
+    #[test]
+    fn disconnect_snapshot_and_friend_removal_disable_live_data_routes() {
+        let presence = FriendPresence::default();
+        for remote in ["disconnected", "empty-snapshot", "removed-friend"] {
+            presence.update(remote, "friend".into(), true).unwrap();
+        }
+        presence.remove("disconnected").unwrap();
+        presence.replace("empty-snapshot", Vec::new()).unwrap();
+        assert!(!presence.has_online_friends("disconnected").unwrap());
+        assert!(!presence.has_online_friends("empty-snapshot").unwrap());
+        assert!(presence.has_online_friends("removed-friend").unwrap());
+        presence.retain(&[]).unwrap();
+        assert!(presence.active_remotes().unwrap().is_empty());
+        assert!(!presence.has_online_friends("removed-friend").unwrap());
+
+        let change = presence
+            .replace("disconnected", vec!["friend".into()])
+            .unwrap()
+            .unwrap();
+        assert!(change.route_added);
+        assert!(presence.has_online_friends("disconnected").unwrap());
+    }
 
     #[test]
     fn friend_stays_online_while_any_remote_reports_presence() {
