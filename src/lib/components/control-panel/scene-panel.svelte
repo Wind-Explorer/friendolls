@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { commands, type PuppetMovementMode } from "$lib/bindings";
+  import { commands, type SceneConfiguration } from "$lib/bindings";
   import {
     sceneConfiguration,
     sceneConfigurationListenerError,
@@ -13,9 +13,12 @@
 
   let { register }: { register: RegisterPanel } = $props();
 
-  let puppetScale = $state(1);
-  let puppetOpacity = $state(1);
-  let puppetMovementMode = $state<PuppetMovementMode>("free");
+  let configurationDraft = $state<SceneConfiguration>({
+    puppetScale: 1,
+    puppetOpacity: 1,
+    puppetMovementMode: "free",
+    hideLocalPuppetWhenAlone: false,
+  });
   let skinFile = $state<File | null>(null);
   let skinPreviewUrl = $state<string | null>(null);
   let skinInput = $state<HTMLInputElement | null>(null);
@@ -26,9 +29,7 @@
 
   $effect(() => {
     if (!dirty) {
-      puppetScale = $sceneConfiguration.puppetScale;
-      puppetOpacity = $sceneConfiguration.puppetOpacity;
-      puppetMovementMode = $sceneConfiguration.puppetMovementMode;
+      configurationDraft = { ...$sceneConfiguration };
     }
     register("scene", { apply, reset }, { dirty, busy });
   });
@@ -40,9 +41,12 @@
 
   function hasConfigurationChanges() {
     return (
-      puppetScale !== $sceneConfiguration.puppetScale ||
-      puppetOpacity !== $sceneConfiguration.puppetOpacity ||
-      puppetMovementMode !== $sceneConfiguration.puppetMovementMode
+      configurationDraft.puppetScale !== $sceneConfiguration.puppetScale ||
+      configurationDraft.puppetOpacity !== $sceneConfiguration.puppetOpacity ||
+      configurationDraft.puppetMovementMode !==
+        $sceneConfiguration.puppetMovementMode ||
+      configurationDraft.hideLocalPuppetWhenAlone !==
+        $sceneConfiguration.hideLocalPuppetWhenAlone
     );
   }
 
@@ -73,9 +77,7 @@
   }
 
   function reset() {
-    puppetScale = $sceneConfiguration.puppetScale;
-    puppetOpacity = $sceneConfiguration.puppetOpacity;
-    puppetMovementMode = $sceneConfiguration.puppetMovementMode;
+    configurationDraft = { ...$sceneConfiguration };
     clearSkinDraft();
     pendingSkinReset = false;
     dirty = false;
@@ -102,13 +104,9 @@
 
       if (hasConfigurationChanges()) {
         const configuration = await commands.updateSceneConfiguration({
-          puppetScale,
-          puppetOpacity,
-          puppetMovementMode,
+          ...configurationDraft,
         });
-        puppetScale = configuration.puppetScale;
-        puppetOpacity = configuration.puppetOpacity;
-        puppetMovementMode = configuration.puppetMovementMode;
+        configurationDraft = { ...configuration };
       }
       dirty = false;
       return true;
@@ -149,8 +147,8 @@
                   <p>{$messages.scene_opacity()}</p>
                 </div>
                 <div class="text-end flex flex-col">
-                  <p>{(puppetScale * 100).toFixed(0)}%</p>
-                  <p>{(puppetOpacity * 100).toFixed(0)}%</p>
+                  <p>{(configurationDraft.puppetScale * 100).toFixed(0)}%</p>
+                  <p>{(configurationDraft.puppetOpacity * 100).toFixed(0)}%</p>
                 </div>
               </div>
             </div>
@@ -159,8 +157,8 @@
                 userId={$profile.id}
                 skinHash={pendingSkinReset ? null : $profile.skinHash}
                 skinSource={skinPreviewUrl}
-                scale={puppetScale}
-                opacity={puppetOpacity}
+                scale={configurationDraft.puppetScale}
+                opacity={configurationDraft.puppetOpacity}
               />
             </div>
           </div>
@@ -189,7 +187,7 @@
             min="0.5"
             max="2"
             step="0.05"
-            bind:value={puppetScale}
+            bind:value={configurationDraft.puppetScale}
             oninput={updateDirty}
             disabled={busy}
             aria-describedby="puppet-scale-help"
@@ -207,12 +205,23 @@
             min="0.25"
             max="1"
             step="0.05"
-            bind:value={puppetOpacity}
+            bind:value={configurationDraft.puppetOpacity}
             oninput={updateDirty}
             disabled={busy}
             aria-describedby="puppet-opacity-help"
           />
         </div>
+
+        <label class="label cursor-pointer justify-start gap-2">
+          <input
+            class="checkbox checkbox-sm checkbox-primary"
+            type="checkbox"
+            bind:checked={configurationDraft.hideLocalPuppetWhenAlone}
+            onchange={updateDirty}
+            disabled={busy}
+          />
+          <span>{$messages.scene_hide_local_puppet_when_alone()}</span>
+        </label>
       </fieldset>
       <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
         <button
@@ -247,19 +256,21 @@
     <legend class="fieldset-legend px-1">{$messages.puppet_movement()}</legend>
     <div class="grid grid-cols-2 gap-2">
       <label
-        class:border-primary={puppetMovementMode === "free"}
+        class:border-primary={configurationDraft.puppetMovementMode === "free"}
         class="card cursor-pointer overflow-hidden border border-base-300 bg-base-200"
       >
         <img
           src="/puppet-movement-free.svg"
           alt={$messages.puppet_free_alt()}
           class="w-full object-cover bg-linear-to-b from-base-100 to-base-300"
-          class:from-primary-content={puppetMovementMode === "free"}
+          class:from-primary-content={configurationDraft.puppetMovementMode ===
+            "free"}
         />
         <span
           class="card-body items-center gap-2 p-2 text-center"
-          class:bg-primary-content={puppetMovementMode === "free"}
-          class:text-primary={puppetMovementMode === "free"}
+          class:bg-primary-content={configurationDraft.puppetMovementMode ===
+            "free"}
+          class:text-primary={configurationDraft.puppetMovementMode === "free"}
         >
           <span class="text-xs font-medium">{$messages.puppet_free()}</span>
           <input
@@ -267,9 +278,9 @@
             type="radio"
             name="puppet-movement-mode"
             value="free"
-            checked={puppetMovementMode === "free"}
+            checked={configurationDraft.puppetMovementMode === "free"}
             onchange={() => {
-              puppetMovementMode = "free";
+              configurationDraft.puppetMovementMode = "free";
               updateDirty();
             }}
             disabled={busy}
@@ -278,19 +289,22 @@
       </label>
 
       <label
-        class:border-primary={puppetMovementMode === "bottom"}
-        class:text-primary={puppetMovementMode === "bottom"}
+        class:border-primary={configurationDraft.puppetMovementMode ===
+          "bottom"}
+        class:text-primary={configurationDraft.puppetMovementMode === "bottom"}
         class="card cursor-pointer overflow-hidden border border-base-300 bg-base-200"
       >
         <img
           src="/puppet-movement-bottom.svg"
           alt={$messages.puppet_bottom_alt()}
           class="w-full object-cover bg-linear-to-b from-base-100 to-base-300"
-          class:from-primary-content={puppetMovementMode === "bottom"}
+          class:from-primary-content={configurationDraft.puppetMovementMode ===
+            "bottom"}
         />
         <span
           class="card-body items-center gap-2 p-2 text-center"
-          class:bg-primary-content={puppetMovementMode === "bottom"}
+          class:bg-primary-content={configurationDraft.puppetMovementMode ===
+            "bottom"}
         >
           <span class="text-xs font-medium">{$messages.puppet_bottom()}</span>
           <input
@@ -298,9 +312,9 @@
             type="radio"
             name="puppet-movement-mode"
             value="bottom"
-            checked={puppetMovementMode === "bottom"}
+            checked={configurationDraft.puppetMovementMode === "bottom"}
             onchange={() => {
-              puppetMovementMode = "bottom";
+              configurationDraft.puppetMovementMode = "bottom";
               updateDirty();
             }}
             disabled={busy}

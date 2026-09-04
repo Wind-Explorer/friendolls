@@ -9,6 +9,7 @@ export const sceneConfiguration = writable<SceneConfiguration>({
   puppetScale: 1,
   puppetOpacity: 1,
   puppetMovementMode: "free",
+  hideLocalPuppetWhenAlone: false,
 });
 export const sceneConfigurationListenerError = writable("");
 

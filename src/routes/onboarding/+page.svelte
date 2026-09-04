@@ -90,6 +90,7 @@
     puppetScale: 1,
     puppetOpacity: 1,
     puppetMovementMode: "free",
+    hideLocalPuppetWhenAlone: false,
   });
   let remediation = $state(false);
   let stepIndex = $state(0);

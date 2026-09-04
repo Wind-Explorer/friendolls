@@ -17,17 +17,23 @@
   import SceneUserPopoverContent from "./popovers/user-interaction.svelte";
   import { messages } from "$lib/i18n";
 
+  const LOCAL_PUPPET_HIDE_DELAY_MS = 5_000;
+  const LOCAL_PUPPET_SHOW_DELAY_MS = 3_000;
+
   let selectedUserId = $state<string | null>(null);
   let lockedPopoverUserId = $state<string | null>(null);
   let viewedImage = $state<{ source: string; senderName: string } | null>(null);
   let puppetBounds = $state<PuppetScreenBounds[]>([]);
+  let showLocalPuppet = $state(true);
   let puppetBoundsById = $derived(
     new Map(puppetBounds.map((bounds) => [bounds.id, bounds])),
   );
   let visiblePuppets = $derived(
     $puppetStates.filter(
       ({ id }) =>
-        id === $liveMetadata.localId || $onlineFriendIds.has(id),
+        $onlineFriendIds.has(id) ||
+        (id === $liveMetadata.localId &&
+          (!$sceneConfiguration.hideLocalPuppetWhenAlone || showLocalPuppet)),
     ),
   );
   let skinHashes = $derived(
@@ -43,6 +49,23 @@
 
   $effect(() => {
     void getCurrentWindow().setTitle($messages.scene_window_title());
+  });
+
+  $effect(() => {
+    if (!$sceneConfiguration.hideLocalPuppetWhenAlone) {
+      showLocalPuppet = true;
+      return;
+    }
+
+    const nextShowLocalPuppet = $onlineFriendIds.size > 0;
+    if (showLocalPuppet === nextShowLocalPuppet) return;
+    const timer = window.setTimeout(
+      () => (showLocalPuppet = nextShowLocalPuppet),
+      nextShowLocalPuppet
+        ? LOCAL_PUPPET_SHOW_DELAY_MS
+        : LOCAL_PUPPET_HIDE_DELAY_MS,
+    );
+    return () => window.clearTimeout(timer);
   });
 
   onMount(startHitboxSync);

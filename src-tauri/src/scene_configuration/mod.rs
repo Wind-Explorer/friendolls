@@ -26,6 +26,7 @@ pub struct SceneConfiguration {
     pub puppet_scale: f64,
     pub puppet_opacity: f64,
     pub puppet_movement_mode: PuppetMovementMode,
+    pub hide_local_puppet_when_alone: bool,
 }
 
 pub struct SceneConfigurationState(RwLock<SceneConfiguration>);
@@ -56,7 +57,7 @@ pub struct SceneConfigurationChanged {
 
 async fn get(database: &AppDatabase) -> Result<SceneConfiguration, sqlx::Error> {
     sqlx::query_as::<_, SceneConfiguration>(
-        "SELECT puppet_scale, puppet_opacity, puppet_movement_mode FROM scene_configuration WHERE id = ?1",
+        "SELECT puppet_scale, puppet_opacity, puppet_movement_mode, hide_local_puppet_when_alone FROM scene_configuration WHERE id = ?1",
     )
     .bind(SCENE_CONFIGURATION_ID)
     .fetch_one(database.pool())
@@ -83,11 +84,12 @@ async fn update(
     }
 
     sqlx::query(
-        "UPDATE scene_configuration SET puppet_scale = ?1, puppet_opacity = ?2, puppet_movement_mode = ?3 WHERE id = ?4",
+        "UPDATE scene_configuration SET puppet_scale = ?1, puppet_opacity = ?2, puppet_movement_mode = ?3, hide_local_puppet_when_alone = ?4 WHERE id = ?5",
     )
     .bind(configuration.puppet_scale)
     .bind(configuration.puppet_opacity)
     .bind(configuration.puppet_movement_mode)
+    .bind(configuration.hide_local_puppet_when_alone)
     .bind(SCENE_CONFIGURATION_ID)
     .execute(database.pool())
     .await
@@ -164,6 +166,7 @@ mod tests {
                 puppet_scale: 1.0,
                 puppet_opacity: 1.0,
                 puppet_movement_mode: PuppetMovementMode::Free,
+                hide_local_puppet_when_alone: false,
             }
         );
     }
@@ -178,6 +181,7 @@ mod tests {
                 puppet_scale: 1.5,
                 puppet_opacity: 0.4,
                 puppet_movement_mode: PuppetMovementMode::Bottom,
+                hide_local_puppet_when_alone: true,
             },
         )
         .await
@@ -188,6 +192,7 @@ mod tests {
             configuration.puppet_movement_mode,
             PuppetMovementMode::Bottom
         );
+        assert!(configuration.hide_local_puppet_when_alone);
         assert_eq!(get(&database).await.unwrap(), configuration);
 
         let error = update(
@@ -196,6 +201,7 @@ mod tests {
                 puppet_scale: 2.1,
                 puppet_opacity: 0.4,
                 puppet_movement_mode: PuppetMovementMode::Bottom,
+                hide_local_puppet_when_alone: true,
             },
         )
         .await
@@ -209,6 +215,7 @@ mod tests {
                 puppet_scale: 1.5,
                 puppet_opacity: 0.05,
                 puppet_movement_mode: PuppetMovementMode::Bottom,
+                hide_local_puppet_when_alone: true,
             },
         )
         .await

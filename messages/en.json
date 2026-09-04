@@ -158,6 +158,7 @@
   "scene_all_puppets": "All puppets",
   "scene_scale": "Scale",
   "scene_opacity": "Opacity",
+  "scene_hide_local_puppet_when_alone": "Hide my puppet when no friends are online",
   "scene_choose_skin": "Choose a skin",
   "scene_loading_preview": "Loading puppet preview",
   "action_add_friend_title": "Add Friend",
