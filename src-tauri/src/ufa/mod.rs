@@ -105,10 +105,6 @@ where
 
 pub fn init(handle: &AppHandle) {
     handle.manage(ForegroundAppState::default());
-}
-
-/// Starts the foreground app change listener after network state is available.
-pub fn start(handle: &AppHandle) {
     update_local_app(handle, current_app());
     let handle = handle.clone();
 

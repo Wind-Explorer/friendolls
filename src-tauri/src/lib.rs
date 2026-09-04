@@ -27,10 +27,9 @@ async fn launch_app(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error:
     scene_configuration::init(handle).await?;
     keypair::init(handle).await?;
     interactions::init(handle);
-    ufa::init(handle);
     cursor::init(handle);
     network::init(handle).await?;
-    ufa::start(handle);
+    ufa::init(handle);
     puppet::init(handle)?;
     application::init(handle).await?;
     Ok(())
