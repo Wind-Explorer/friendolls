@@ -89,6 +89,12 @@ async completeOnboarding() : Promise<null> {
 async requestAccessibilityPermission() : Promise<boolean> {
     return await TAURI_INVOKE("request_accessibility_permission");
 },
+async getAutostartEnabled() : Promise<boolean> {
+    return await TAURI_INVOKE("get_autostart_enabled");
+},
+async setAutostartEnabled(enabled: boolean) : Promise<boolean> {
+    return await TAURI_INVOKE("set_autostart_enabled", { enabled });
+},
 async getLocaleSettings() : Promise<LocaleChanged> {
     return await TAURI_INVOKE("get_locale_settings");
 },

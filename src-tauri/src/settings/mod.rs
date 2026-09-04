@@ -1,3 +1,5 @@
+pub mod autostart;
+
 use std::sync::RwLock;
 
 use serde::{Deserialize, Serialize};

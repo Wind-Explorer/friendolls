@@ -16,10 +16,31 @@
   let { register }: { register: RegisterPanel } = $props();
 
   let displayName = $state("");
-  let dirty = $state(false);
+  let nameDirty = $state(false);
   let busy = $state(false);
   let error = $state("");
   let languageBusy = $state(false);
+  let autostartEnabled = $state(false);
+  let savedAutostartEnabled = $state(false);
+  let autostartLoaded = $state(false);
+  let dirty = $derived(
+    nameDirty || (autostartLoaded && autostartEnabled !== savedAutostartEnabled),
+  );
+
+  async function loadAutostart() {
+    autostartLoaded = false;
+    try {
+      savedAutostartEnabled = await commands.getAutostartEnabled();
+      autostartEnabled = savedAutostartEnabled;
+      autostartLoaded = true;
+    } catch (cause) {
+      error = errorMessage(cause);
+    }
+  }
+
+  onMount(() => {
+    void loadAutostart();
+  });
 
   async function changeLanguage(event: Event) {
     languageBusy = true;
@@ -36,27 +57,30 @@
   }
 
   $effect(() => {
-    if (!dirty) displayName = $profile?.displayName ?? "";
+    if (!nameDirty) displayName = $profile?.displayName ?? "";
     register("general", { apply, reset }, { dirty, busy });
   });
 
   onMount(() => register("general", { apply, reset }, { dirty, busy }));
 
-  function updateDirty() {
-    dirty = displayName.trim() !== ($profile?.displayName ?? "");
+  function updateDirty(event: Event) {
+    displayName = (event.currentTarget as HTMLInputElement).value;
+    nameDirty = displayName.trim() !== ($profile?.displayName ?? "");
     error = "";
   }
 
   function reset() {
     displayName = $profile?.displayName ?? "";
-    dirty = false;
+    nameDirty = false;
     error = "";
+    autostartEnabled = savedAutostartEnabled;
+    void loadAutostart();
   }
 
   async function apply() {
     const nextName = displayName.trim();
     if (!dirty) return true;
-    if (!nextName) {
+    if (nameDirty && !nextName) {
       error = $messages.error_display_name_empty();
       return false;
     }
@@ -64,9 +88,16 @@
     busy = true;
     error = "";
     try {
-      await commands.updateProfile(nextName, null);
-      displayName = nextName;
-      dirty = false;
+      if (nameDirty) {
+        await commands.updateProfile(nextName, null);
+        displayName = nextName;
+        nameDirty = false;
+      }
+      if (autostartLoaded && autostartEnabled !== savedAutostartEnabled) {
+        savedAutostartEnabled =
+          await commands.setAutostartEnabled(autostartEnabled);
+        autostartEnabled = savedAutostartEnabled;
+      }
       return true;
     } catch (cause) {
       error = errorMessage(cause);
@@ -147,7 +178,22 @@
   </fieldset>
 
   <fieldset class="fieldset border border-base-300 bg-base-100 p-3">
-    <legend class="fieldset-legend px-1">{$messages.account_ui_label()}</legend>
+    <legend class="fieldset-legend px-1"
+      >{$messages.account_system_label()}</legend
+    >
+    <label class="fieldset-label mb-2" for="autostart">
+      <input
+        id="autostart"
+        type="checkbox"
+        class="checkbox checkbox-sm"
+        bind:checked={autostartEnabled}
+        disabled={!autostartLoaded || busy}
+        onchange={() => {
+          error = "";
+        }}
+      />
+      {$messages.autostart_label()}
+    </label>
     <label class="fieldset-label" for="language"
       >{$messages.language_label()}</label
     >

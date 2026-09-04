@@ -50,6 +50,10 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(specta_builder.invoke_handler())
@@ -110,6 +114,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             onboarding::get_onboarding_status,
             onboarding::complete_onboarding,
             macos::request_accessibility_permission,
+            settings::autostart::get_autostart_enabled,
+            settings::autostart::set_autostart_enabled,
             settings::get_locale_settings,
             settings::set_locale_preference,
             ui::control_panel::open_action_window,

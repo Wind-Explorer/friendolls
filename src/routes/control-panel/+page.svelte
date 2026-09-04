@@ -14,7 +14,7 @@
 
   const tabs = [
     { id: "scene", label: "control_tab_scene" },
-    { id: "general", label: "control_tab_account" },
+    { id: "general", label: "control_tab_general" },
     { id: "friends", label: "control_tab_friends" },
     { id: "network", label: "control_tab_network" },
   ] as const;
