@@ -80,14 +80,8 @@ async getSceneConfiguration() : Promise<SceneConfiguration> {
 async updateSceneConfiguration(configuration: SceneConfiguration) : Promise<SceneConfiguration> {
     return await TAURI_INVOKE("update_scene_configuration", { configuration });
 },
-async getOnboardingStatus() : Promise<OnboardingStatus> {
-    return await TAURI_INVOKE("get_onboarding_status");
-},
 async completeOnboarding() : Promise<null> {
     return await TAURI_INVOKE("complete_onboarding");
-},
-async requestAccessibilityPermission() : Promise<boolean> {
-    return await TAURI_INVOKE("request_accessibility_permission");
 },
 async getAutostartEnabled() : Promise<boolean> {
     return await TAURI_INVOKE("get_autostart_enabled");
@@ -121,7 +115,6 @@ friendStatusesChanged: FriendStatusesChanged,
 friendsChanged: FriendsChanged,
 localeChanged: LocaleChanged,
 networkStatusChanged: NetworkStatusChanged,
-onboardingStatus: OnboardingStatus,
 profileChanged: ProfileChanged,
 puppetStatesChanged: PuppetStatesChanged,
 remotesChanged: RemotesChanged,
@@ -135,7 +128,6 @@ friendStatusesChanged: "friend-statuses-changed",
 friendsChanged: "friends-changed",
 localeChanged: "locale-changed",
 networkStatusChanged: "network-status-changed",
-onboardingStatus: "onboarding-status",
 profileChanged: "profile-changed",
 puppetStatesChanged: "puppet-states-changed",
 remotesChanged: "remotes-changed",
@@ -179,7 +171,6 @@ export type InteractionContent = { type: "text"; text: string } | { type: "wave"
 export type LiveDataSnapshot = { cursorPositions: Partial<{ [key in string]: CursorPositions }>; foregroundApps: Partial<{ [key in string]: AppMeta }> }
 export type LocaleChanged = { preference: string; locale: string }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
-export type OnboardingStatus = { onboardingDone: boolean; macosAccessibilityPermissionGranted: boolean; requiresAccessibilityPermission: boolean }
 export type ProfileChanged = { profile: User }
 export type PuppetMovementMode = "free" | "bottom"
 export type PuppetState = { id: string; position: CursorPosition; isMoving: boolean }

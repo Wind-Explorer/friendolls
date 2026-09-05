@@ -6,7 +6,6 @@ mod images;
 mod interactions;
 mod keypair;
 mod live_data;
-mod macos;
 mod network;
 mod onboarding;
 mod profile;
@@ -114,9 +113,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             puppet::list_puppet_states,
             scene_configuration::get_scene_configuration,
             scene_configuration::update_scene_configuration,
-            onboarding::get_onboarding_status,
             onboarding::complete_onboarding,
-            macos::request_accessibility_permission,
             settings::autostart::get_autostart_enabled,
             settings::autostart::set_autostart_enabled,
             settings::get_locale_settings,
@@ -136,7 +133,6 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             interactions::FriendInteractionReceived,
             puppet::PuppetStatesChanged,
             scene_configuration::SceneConfigurationChanged,
-            onboarding::OnboardingStatus,
             settings::LocaleChanged,
         ])
 }

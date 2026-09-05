@@ -8,10 +8,6 @@
   } from "$lib/i18n";
   import PanelMessage from "$lib/components/control-panel/panel-message.svelte";
 
-  let {
-    requiresAccessibilityPermission,
-  }: { requiresAccessibilityPermission: boolean } = $props();
-
   let busy = $state(false);
   let error = $state("");
 

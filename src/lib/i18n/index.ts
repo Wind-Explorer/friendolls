@@ -83,8 +83,6 @@ export function errorMessage(cause: unknown): string {
       return compiledMessages.error_profile_loading();
     case "Choose a 64×64 PNG skin before continuing.":
       return compiledMessages.error_skin_required();
-    case "Turn on Friendolls in macOS Accessibility settings before continuing.":
-      return compiledMessages.error_accessibility_required();
     case "Identification key is not valid base64url.":
       return compiledMessages.error_key_invalid_base64();
     case "Identification key must encode a 32-byte public key.":

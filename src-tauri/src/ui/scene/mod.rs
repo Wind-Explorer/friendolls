@@ -1,4 +1,4 @@
-use std::{sync::RwLock, time::Duration};
+use std::sync::RwLock;
 
 use serde::Deserialize;
 use specta::Type;
@@ -82,15 +82,22 @@ pub const WINDOW_LABEL: &str = "scene";
 fn track_scene_hitboxes(app_handle: AppHandle, window: tauri::WebviewWindow) {
     tauri::async_runtime::spawn(async move {
         let mut ignores_cursor = true;
-        let mut interval = tokio::time::interval(Duration::from_millis(16));
+        let mut interval = tokio::time::interval(crate::cursor::SYSTEM_CURSOR_POLL_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             interval.tick().await;
 
-            let cursor = match app_handle.cursor_position() {
-                Ok(cursor) => cursor,
+            let cursor = match app_handle
+                .state::<crate::cursor::CursorPositionProvider>()
+                .latest()
+            {
+                Ok(Some(cursor)) => cursor,
+                Ok(None) => continue,
                 Err(error) => {
-                    eprintln!("Failed to read cursor position for scene hit-testing: {error}");
+                    eprintln!(
+                        "Failed to read shared cursor position for scene hit-testing: {error}"
+                    );
                     continue;
                 }
             };

@@ -3,15 +3,12 @@
   import { onDestroy, onMount } from "svelte";
   import {
     commands,
-    events,
-    type OnboardingStatus,
     type PuppetMovementMode,
     type RemoteInput,
     type SceneConfiguration,
     type User,
   } from "$lib/bindings";
   import PanelMessage from "$lib/components/control-panel/panel-message.svelte";
-  import AccessibilityStep from "./components/accessibility-step.svelte";
   import CompleteStep from "./components/complete-step.svelte";
   import FriendStep from "./components/friend-step.svelte";
   import IdentityStep from "./components/identity-step.svelte";
@@ -34,7 +31,6 @@
     | "movement"
     | "server"
     | "friend"
-    | "accessibility"
     | "complete";
 
   const allSteps: Array<{
@@ -73,18 +69,12 @@
       navigationLabel: (catalog) => catalog.onboarding_friend_nav(),
     },
     {
-      id: "accessibility",
-      title: (catalog) => catalog.onboarding_accessibility_title(),
-      navigationLabel: (catalog) => catalog.onboarding_accessibility_nav(),
-    },
-    {
       id: "complete",
       title: (catalog) => catalog.onboarding_complete_title(),
       navigationLabel: (catalog) => catalog.onboarding_complete_nav(),
     },
   ];
 
-  let status = $state<OnboardingStatus | null>(null);
   let profile = $state<User | null>(null);
   let configuration = $state<SceneConfiguration>({
     puppetScale: 1,
@@ -92,7 +82,6 @@
     puppetMovementMode: "free",
     hideLocalPuppetWhenAlone: false,
   });
-  let remediation = $state(false);
   let stepIndex = $state(0);
   let busy = $state(false);
   let error = $state("");
@@ -118,19 +107,8 @@
     });
   });
 
-  let steps = $derived(
-    remediation
-      ? allSteps.filter((candidate) => candidate.id === "accessibility")
-      : allSteps.filter(
-          (candidate) =>
-            candidate.id !== "accessibility" ||
-            status?.requiresAccessibilityPermission,
-        ),
-  );
+  let steps = $derived(allSteps);
   let step = $derived(steps[stepIndex] ?? steps[0]);
-  let permissionGranted = $derived(
-    status?.macosAccessibilityPermissionGranted ?? false,
-  );
   let isLastStep = $derived(stepIndex === steps.length - 1);
 
   $effect(() => {
@@ -138,22 +116,16 @@
   });
 
   onMount(() => {
-    let unlisten: (() => void) | undefined;
     let disposed = false;
 
     void (async () => {
       try {
-        unlisten = await events.onboardingStatus.listen((event) => {
-          status = event.payload;
-        });
-        const [nextStatus, nextProfile, nextConfiguration] = await Promise.all([
-          commands.getOnboardingStatus(),
+        const [nextProfile, nextConfiguration] = await Promise.all([
           commands.getProfile(),
           commands.getSceneConfiguration(),
         ]);
         if (disposed) return;
 
-        status = nextStatus;
         profile = nextProfile;
         configuration = nextConfiguration;
         displayName = nextProfile.displayNameConfigured
@@ -165,9 +137,7 @@
         const requestedStep = new URLSearchParams(window.location.search).get(
           "step",
         );
-        remediation =
-          requestedStep === "accessibility" && nextStatus.onboardingDone;
-        if (!remediation && requestedStep) {
+        if (requestedStep) {
           const requestedIndex = steps.findIndex(
             (candidate) => candidate.id === requestedStep,
           );
@@ -180,7 +150,6 @@
 
     return () => {
       disposed = true;
-      unlisten?.();
     };
   });
 
@@ -256,8 +225,6 @@
         savedFriendId = (await commands.createFriend(nextFriendId)).id;
         if (previousFriendId) await commands.deleteFriend(previousFriendId);
       }
-    } else if (step.id === "accessibility" && !permissionGranted) {
-      throw new Error($messages.error_accessibility_required());
     }
   }
 
@@ -267,9 +234,7 @@
     error = "";
     try {
       await saveCurrentStep();
-      if (remediation) {
-        await getCurrentWindow().close();
-      } else if (isLastStep) {
+      if (isLastStep) {
         await commands.completeOnboarding();
         await getCurrentWindow().close();
       } else {
@@ -286,21 +251,6 @@
     if (stepIndex > 0 && !busy) {
       stepIndex -= 1;
       error = "";
-    }
-  }
-
-  async function requestAccessibilityPermission() {
-    busy = true;
-    error = "";
-    try {
-      const granted = await commands.requestAccessibilityPermission();
-      if (!granted) {
-        error = $messages.accessibility_settings_opened();
-      }
-    } catch (cause) {
-      error = errorMessage(cause);
-    } finally {
-      busy = false;
     }
   }
 </script>
@@ -345,23 +295,17 @@
         <div class="min-h-0 flex-1 overflow-y-auto p-6">
           {#if error}
             <div class="mb-3">
-              <PanelMessage
-                kind={step.id === "accessibility" && !permissionGranted
-                  ? "warning"
-                  : "error"}>{error}</PanelMessage
-              >
+              <PanelMessage kind="error">{error}</PanelMessage>
             </div>
           {/if}
 
-          {#if !status || !profile}
+          {#if !profile}
             <div class="space-y-3" aria-label={$messages.onboarding_loading()}>
               <div class="skeleton h-5 w-2/3"></div>
               <div class="skeleton h-24 w-full"></div>
             </div>
           {:else if step.id === "welcome"}
-            <WelcomeStep
-              requiresAccessibilityPermission={status.requiresAccessibilityPermission}
-            />
+            <WelcomeStep />
           {:else if step.id === "identity"}
             <IdentityStep bind:displayName {busy} />
           {:else if step.id === "skin"}
@@ -385,12 +329,6 @@
             />
           {:else if step.id === "friend"}
             <FriendStep bind:friendId {busy} />
-          {:else if step.id === "accessibility"}
-            <AccessibilityStep
-              {permissionGranted}
-              {busy}
-              onrequest={requestAccessibilityPermission}
-            />
           {:else if step.id === "complete"}
             <CompleteStep />
           {/if}
@@ -400,36 +338,29 @@
           class="flex shrink-0 items-center justify-between border-t border-base-300 bg-base-200 px-4 py-3"
         >
           <span class="text-[10px] text-base-content/60">
-            {remediation
-              ? $messages.onboarding_permission_repair()
-              : $messages.onboarding_step_count({
-                  current: stepIndex + 1,
-                  total: steps.length,
-                })}
+            {$messages.onboarding_step_count({
+              current: stepIndex + 1,
+              total: steps.length,
+            })}
           </span>
           <div class="flex justify-end gap-2">
-            {#if !remediation}
-              <button
-                class="btn min-w-20"
-                type="button"
-                disabled={busy || stepIndex === 0}
-                onclick={back}>{$messages.onboarding_back()}</button
-              >
-            {/if}
             <button
               class="btn min-w-20"
               type="button"
-              disabled={busy ||
-                (step.id === "accessibility" && !permissionGranted)}
+              disabled={busy || stepIndex === 0}
+              onclick={back}>{$messages.onboarding_back()}</button
+            >
+            <button
+              class="btn min-w-20"
+              type="button"
+              disabled={busy}
               onclick={next}
             >
               {busy
                 ? $messages.onboarding_working()
-                : remediation
-                  ? $messages.onboarding_done()
-                  : isLastStep
-                    ? $messages.onboarding_finish()
-                    : $messages.onboarding_next()}
+                : isLastStep
+                  ? $messages.onboarding_finish()
+                  : $messages.onboarding_next()}
             </button>
           </div>
         </footer>
