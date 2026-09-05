@@ -70,12 +70,6 @@
     updateDirty();
   }
 
-  function resetSkin() {
-    clearSkinDraft();
-    pendingSkinReset = true;
-    updateDirty();
-  }
-
   function reset() {
     configurationDraft = { ...$sceneConfiguration };
     clearSkinDraft();
@@ -171,10 +165,12 @@
       </div>
     </div>
 
-    <div class="min-w-0 space-y-2">
-      <fieldset class="fieldset border border-base-300 bg-base-100 p-3 pt-1">
+    <div class="min-w-0 max-w-full space-y-2">
+      <fieldset
+        class="fieldset border border-base-300 bg-base-100 p-3 pt-1 max-w-full"
+      >
         <legend class="fieldset-legend px-1"
-          >{$messages.scene_all_puppets()}</legend
+          >{$messages.scene_puppet_display()}</legend
         >
         <div>
           <label class="fieldset-label" for="puppet-scale"
@@ -211,17 +207,6 @@
             aria-describedby="puppet-opacity-help"
           />
         </div>
-
-        <label class="label cursor-pointer justify-start gap-2">
-          <input
-            class="checkbox checkbox-sm checkbox-primary"
-            type="checkbox"
-            bind:checked={configurationDraft.hideLocalPuppetWhenAlone}
-            onchange={updateDirty}
-            disabled={busy}
-          />
-          <span>{$messages.scene_hide_local_puppet_when_alone()}</span>
-        </label>
       </fieldset>
       <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
         <button
@@ -231,14 +216,6 @@
           onclick={() => skinInput?.click()}
         >
           {$messages.scene_choose_skin()}
-        </button>
-        <button
-          class="btn"
-          type="button"
-          disabled={!$profile || busy || (!$profile.skinHash && !skinFile)}
-          onclick={resetSkin}
-        >
-          {$messages.common_reset()}
         </button>
         <input
           id="skin-file"
@@ -251,6 +228,20 @@
         />
       </div>
     </div>
+  </div>
+  <div class="p-2">
+    <label class="label cursor-pointer justify-start gap-2">
+      <input
+        class="checkbox checkbox-sm checkbox-primary"
+        type="checkbox"
+        bind:checked={configurationDraft.hideLocalPuppetWhenAlone}
+        onchange={updateDirty}
+        disabled={busy}
+      />
+      <span class="text-wrap text-xs"
+        >{$messages.scene_hide_local_puppet_when_alone()}</span
+      >
+    </label>
   </div>
   <fieldset class="fieldset border border-base-300 bg-base-100 p-3 pt-1">
     <legend class="fieldset-legend px-1">{$messages.puppet_movement()}</legend>
