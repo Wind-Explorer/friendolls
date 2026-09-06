@@ -41,10 +41,10 @@ impl SceneConfigurationState {
         Ok(())
     }
 
-    pub(crate) fn puppet_movement_mode(&self) -> Result<PuppetMovementMode, String> {
+    pub(crate) fn snapshot(&self) -> Result<SceneConfiguration, String> {
         self.0
             .read()
-            .map(|configuration| configuration.puppet_movement_mode)
+            .map(|configuration| configuration.clone())
             .map_err(|error| error.to_string())
     }
 }

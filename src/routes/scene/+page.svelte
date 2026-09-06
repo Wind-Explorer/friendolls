@@ -3,7 +3,6 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Popover from "$lib/components/popover.svelte";
   import { friendName, friends } from "$lib/listeners/friends";
-  import { onlineFriendIds } from "$lib/listeners/friend-statuses";
   import { incomingInteraction } from "$lib/listeners/interactions";
   import { liveMetadata } from "$lib/listeners/live-metadata";
   import { profile } from "$lib/listeners/profile";
@@ -17,28 +16,16 @@
   import SceneUserPopoverContent from "./popovers/user-interaction.svelte";
   import { messages } from "$lib/i18n";
 
-  const LOCAL_PUPPET_HIDE_DELAY_MS = 5_000;
-  const LOCAL_PUPPET_SHOW_DELAY_MS = 3_000;
-
   let selectedUserId = $state<string | null>(null);
   let lockedPopoverUserId = $state<string | null>(null);
   let viewedImage = $state<{ source: string; senderName: string } | null>(null);
   let puppetBounds = $state<PuppetScreenBounds[]>([]);
-  let showLocalPuppet = $state(true);
   let puppetBoundsById = $derived(
     new Map(puppetBounds.map((bounds) => [bounds.id, bounds])),
   );
-  let visiblePuppets = $derived(
-    $puppetStates.filter(
-      ({ id }) =>
-        $onlineFriendIds.has(id) ||
-        (id === $liveMetadata.localId &&
-          (!$sceneConfiguration.hideLocalPuppetWhenAlone || showLocalPuppet)),
-    ),
-  );
   let skinHashes = $derived(
     new Map(
-      visiblePuppets.map(({ id }) => [
+      $puppetStates.map(({ id }) => [
         id,
         id === $profile?.id
           ? $profile.skinHash
@@ -49,23 +36,6 @@
 
   $effect(() => {
     void getCurrentWindow().setTitle($messages.scene_window_title());
-  });
-
-  $effect(() => {
-    if (!$sceneConfiguration.hideLocalPuppetWhenAlone) {
-      showLocalPuppet = true;
-      return;
-    }
-
-    const nextShowLocalPuppet = $onlineFriendIds.size > 0;
-    if (showLocalPuppet === nextShowLocalPuppet) return;
-    const timer = window.setTimeout(
-      () => (showLocalPuppet = nextShowLocalPuppet),
-      nextShowLocalPuppet
-        ? LOCAL_PUPPET_SHOW_DELAY_MS
-        : LOCAL_PUPPET_HIDE_DELAY_MS,
-    );
-    return () => window.clearTimeout(timer);
   });
 
   onMount(startHitboxSync);
@@ -84,7 +54,7 @@
   $effect(() => {
     if (
       selectedUserId &&
-      !visiblePuppets.some((puppet) => puppet.id === selectedUserId)
+      !$puppetStates.some((puppet) => puppet.id === selectedUserId)
     ) {
       dismissPopover();
     }
@@ -133,14 +103,14 @@
 
 <div class="relative size-full">
   <Renderer
-    puppets={visiblePuppets}
+    puppets={$puppetStates}
     selectedPuppetId={selectedUserId}
     onBoundsChange={(bounds) => (puppetBounds = bounds)}
     {skinHashes}
   />
 
   <div role="banner" class="pointer-events-none fixed inset-0 z-10">
-    {#each visiblePuppets as puppet, index (puppet.id)}
+    {#each $puppetStates as puppet, index (puppet.id)}
       {@const userId = puppet.id}
       {@const bounds = puppetBoundsById.get(userId)}
       {@const foregroundApp = $liveMetadata.foregroundApps.get(userId)}

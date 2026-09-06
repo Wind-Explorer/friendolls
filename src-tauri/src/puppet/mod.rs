@@ -1,5 +1,7 @@
+mod visibility;
+
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::RwLock,
     time::{Duration, Instant},
 };
@@ -91,6 +93,7 @@ pub fn init(handle: &AppHandle) -> Result<(), String> {
         let mut ticker = tokio::time::interval(TICK_INTERVAL);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let mut previous_tick = Instant::now();
+        let mut visibility = visibility::Visibility::default();
 
         loop {
             ticker.tick().await;
@@ -98,39 +101,73 @@ pub fn init(handle: &AppHandle) -> Result<(), String> {
             let elapsed = now.duration_since(previous_tick);
             previous_tick = now;
 
-            let cursor_positions = match handle.state::<CursorState>().snapshot() {
+            // UI state is registered only after the splash/onboarding boundary.
+            if !crate::ui::scene::is_initialized(&handle) {
+                continue;
+            }
+            let online = match handle
+                .state::<crate::network::Network>()
+                .online_friend_ids()
+            {
+                Ok(online) => online.into_iter().collect::<HashSet<_>>(),
+                Err(error) => {
+                    eprintln!("failed to read scene friend presence: {error}");
+                    continue;
+                }
+            };
+            let configuration = match handle.state::<SceneConfigurationState>().snapshot() {
+                Ok(configuration) => configuration,
+                Err(error) => {
+                    eprintln!("failed to read scene configuration: {error}");
+                    continue;
+                }
+            };
+            let has_online_friends = !online.is_empty();
+            visibility.update(
+                configuration.hide_local_puppet_when_alone,
+                has_online_friends,
+                now,
+            );
+            let local_id = handle
+                .state::<crate::keypair::AppKeypair>()
+                .public_key()
+                .to_owned();
+
+            let mut cursor_positions = match handle.state::<CursorState>().snapshot() {
                 Ok(positions) => positions,
                 Err(error) => {
                     eprintln!("failed to read cursor positions for puppet motion: {error}");
                     continue;
                 }
             };
-            let movement_mode = match handle
-                .state::<SceneConfigurationState>()
-                .puppet_movement_mode()
-            {
-                Ok(mode) => mode,
-                Err(error) => {
-                    eprintln!("failed to read Puppet movement mode: {error}");
-                    continue;
-                }
-            };
+            cursor_positions
+                .retain(|id, _| online.contains(id) || (id == &local_id && visibility.show_local));
             let puppets = match handle.state::<PuppetStateStore>().update(
                 &cursor_positions,
                 viewport,
                 elapsed,
-                movement_mode,
+                configuration.puppet_movement_mode,
             ) {
-                Ok(Some(puppets)) => puppets,
-                Ok(None) => continue,
+                Ok(puppets) => puppets,
                 Err(error) => {
                     eprintln!("failed to update puppet motion: {error}");
                     continue;
                 }
             };
 
-            if let Err(error) = emit_changed(&handle, puppets) {
+            if let Some(puppets) = puppets
+                && let Err(error) = emit_changed(&handle, puppets)
+            {
                 eprintln!("failed to emit puppet states: {error}");
+            }
+            // Reconcile even when motion is unchanged (including the idle deadline).
+            if let Err(error) = crate::ui::scene::reconcile_window(
+                &handle,
+                visibility.window_open(has_online_friends),
+            )
+            .await
+            {
+                eprintln!("failed to reconcile scene window: {error}");
             }
         }
     });

@@ -94,6 +94,10 @@ impl Network {
         self.keypair.public_key()
     }
 
+    pub(crate) fn online_friend_ids(&self) -> Result<Vec<String>, String> {
+        self.friend_presence.snapshot()
+    }
+
     pub fn send_live_data(&self, data: LiveData) {
         let active_remotes = match self.friend_presence.active_remotes() {
             Ok(remotes) if remotes.is_empty() => return,
@@ -502,7 +506,7 @@ pub fn list_statuses(
 #[tauri::command]
 #[specta::specta]
 pub fn list_friend_statuses(network: State<'_, Network>) -> Result<Vec<String>, String> {
-    network.friend_presence.snapshot()
+    network.online_friend_ids()
 }
 
 #[tauri::command]
