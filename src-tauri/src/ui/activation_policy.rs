@@ -6,7 +6,8 @@ use tauri::{AppHandle, Manager, RunEvent, Window, WindowEvent, Wry, plugin::Plug
 #[derive(Default)]
 pub struct ActivationPolicy {
     windows: HashSet<String>,
-    applied_regular: Option<bool>,
+    /// `lib::run` establishes Accessory before the event loop starts.
+    applied_regular: bool,
 }
 
 impl ActivationPolicy {
@@ -23,13 +24,13 @@ impl ActivationPolicy {
 
     fn reconcile(&mut self, app: &AppHandle) -> tauri::Result<()> {
         let regular = !self.windows.is_empty();
-        if self.applied_regular != Some(regular) {
+        if self.applied_regular != regular {
             app.set_activation_policy(if regular {
                 tauri::ActivationPolicy::Regular
             } else {
                 tauri::ActivationPolicy::Accessory
             })?;
-            self.applied_regular = Some(regular);
+            self.applied_regular = regular;
         }
         Ok(())
     }
@@ -38,15 +39,6 @@ impl ActivationPolicy {
 impl Plugin<Wry> for ActivationPolicy {
     fn name(&self) -> &'static str {
         "activation-policy"
-    }
-
-    fn initialize(
-        &mut self,
-        app: &AppHandle,
-        _config: serde_json::Value,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.reconcile(app)?;
-        Ok(())
     }
 
     fn window_created(&mut self, window: Window) {

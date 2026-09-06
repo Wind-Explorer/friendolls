@@ -50,7 +50,7 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(ui::activation_policy::ActivationPolicy::default());
 
-    builder
+    let app = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -74,14 +74,22 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while running tauri application")
-        .run(|_, e| {
-            if let tauri::RunEvent::ExitRequested { code, api, .. } = e {
-                if code.is_none() {
-                    api.prevent_exit();
-                }
+        .expect("error while building tauri application");
+
+    #[cfg(target_os = "macos")]
+    let app = {
+        let mut app = app;
+        app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        app
+    };
+
+    app.run(|_, e| {
+        if let tauri::RunEvent::ExitRequested { code, api, .. } = e {
+            if code.is_none() {
+                api.prevent_exit();
             }
-        });
+        }
+    });
 }
 
 fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
