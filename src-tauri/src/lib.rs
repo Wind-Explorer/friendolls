@@ -11,7 +11,7 @@ mod onboarding;
 mod profile;
 mod puppet;
 mod remotes;
-mod scene_configuration;
+mod scene;
 mod settings;
 mod skins;
 mod ufa;
@@ -23,7 +23,7 @@ async fn launch_app(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error:
     updater::init(handle).await;
     db::init(handle).await?;
     settings::init(handle).await?;
-    scene_configuration::init(handle).await?;
+    scene::init(handle).await?;
     keypair::init(handle).await?;
     interactions::init(handle);
     cursor::init(handle);
@@ -111,8 +111,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             images::send_image_bytes,
             interactions::send_interaction,
             puppet::list_puppet_states,
-            scene_configuration::get_scene_configuration,
-            scene_configuration::update_scene_configuration,
+            scene::get_scene_configuration,
+            scene::update_scene_configuration,
             onboarding::complete_onboarding,
             settings::autostart::get_autostart_enabled,
             settings::autostart::set_autostart_enabled,
@@ -132,7 +132,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             ufa::FriendForegroundAppChanged,
             interactions::FriendInteractionReceived,
             puppet::PuppetStatesChanged,
-            scene_configuration::SceneConfigurationChanged,
+            scene::SceneConfigurationChanged,
             settings::LocaleChanged,
         ])
 }

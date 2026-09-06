@@ -13,7 +13,7 @@ use tauri_specta::Event;
 use tokio::time::MissedTickBehavior;
 
 use crate::cursor::{CursorPosition, CursorPositions, CursorState};
-use crate::scene_configuration::{PuppetMovementMode, SceneConfigurationState};
+use crate::scene::{PuppetMovementMode, SceneConfigurationState};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(125);
 const SPEED_LOGICAL_PIXELS_PER_SECOND: f64 = 80.0;
