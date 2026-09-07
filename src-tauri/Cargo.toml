@@ -1,6 +1,6 @@
 [package]
 name = "Friendolls"
-version = "0.1.1"
+version = "0.1.2"
 description = "Hang out with your friends on your desktop!"
 authors = ["wind-explorer@github"]
 edition = "2024"
