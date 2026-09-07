@@ -1,0 +1,257 @@
+diff --git a/src-tauri/src/ufa/windows.rs b/src-tauri/src/ufa/windows.rs
+index 1665cc9..6bc2b01 100644
+--- a/src-tauri/src/ufa/windows.rs
++++ b/src-tauri/src/ufa/windows.rs
+@@ -36,6 +36,8 @@ where
+             return;
+         }
+
++        crate::ui::scene::observe_windows_foreground(GetForegroundWindow());
++
+         // store callback in TLS for this thread
+         CALLBACK.with(|cb| cb.replace(Some(Box::new(callback))));
+
+@@ -65,6 +67,7 @@ unsafe extern "system" fn win_event_proc<F>(
+     _dw_ms_event_time: u32,
+ ) {
+     if event == EVENT_SYSTEM_FOREGROUND {
++        crate::ui::scene::observe_windows_foreground(hwnd);
+         let names = get_active_app_metadata_windows(Some(hwnd));
+         CALLBACK.with(|cb| {
+             if let Some(ref cb) = *cb.borrow() {
+diff --git a/src-tauri/src/ui/scene/mod.rs b/src-tauri/src/ui/scene/mod.rs
+index aadc9f0..3d28e5b 100644
+--- a/src-tauri/src/ui/scene/mod.rs
++++ b/src-tauri/src/ui/scene/mod.rs
+@@ -79,6 +79,27 @@ pub fn apply_macos_decoration_window_policy(app_handle: &AppHandle, window_label
+     {}
+ }
+
++#[cfg(target_os = "windows")]
++pub(crate) fn observe_windows_foreground(hwnd: windows::Win32::Foundation::HWND) {
++    screenshot_picker::observe_windows_foreground(hwnd);
++}
++
++#[cfg(target_os = "windows")]
++fn show_without_activation(window: &tauri::WebviewWindow) -> Result<(), String> {
++    use windows::Win32::{
++        Foundation::HWND,
++        UI::WindowsAndMessaging::{SW_SHOWNOACTIVATE, ShowWindow},
++    };
++
++    // Tauri and this crate currently use different `windows` crate versions,
++    // so reconstruct the otherwise identical HWND wrapper from the raw handle.
++    let hwnd = HWND(window.hwnd().map_err(|error| error.to_string())?.0);
++    // SAFETY: `hwnd` is the scene's live top-level window. ShowWindow's return
++    // value reports previous visibility, not success or failure.
++    let _ = unsafe { ShowWindow(hwnd, SW_SHOWNOACTIVATE) };
++    Ok(())
++}
++
+ pub const WINDOW_LABEL: &str = "scene";
+
+ fn track_scene_hitboxes(app_handle: AppHandle, window: tauri::WebviewWindow) {
+@@ -259,11 +280,17 @@ pub(crate) async fn reconcile_window(handle: &AppHandle, open: bool) -> Result<(
+     };
+     if window.is_visible().map_err(|error| error.to_string())? == suppressed {
+         if suppressed {
+-            window.hide()
++            window.hide().map_err(|error| error.to_string())
+         } else {
+-            window.show()
+-        }
+-        .map_err(|error| error.to_string())?;
++            #[cfg(target_os = "windows")]
++            {
++                show_without_activation(&window)
++            }
++            #[cfg(not(target_os = "windows"))]
++            {
++                window.show().map_err(|error| error.to_string())
++            }
++        }?;
+     }
+     Ok(())
+ }
+diff --git a/src-tauri/src/ui/scene/screenshot_picker/macos.rs b/src-tauri/src/ui/scene/screenshot_picker/macos.rs
+index e1b2fb0..940af32 100644
+--- a/src-tauri/src/ui/scene/screenshot_picker/macos.rs
++++ b/src-tauri/src/ui/scene/screenshot_picker/macos.rs
+@@ -5,6 +5,7 @@
+ use std::{io, mem::size_of};
+
+ pub(super) const ENABLED: bool = true;
++pub(super) const SAMPLE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
+
+ // sys/proc_info.h, included by libproc.h; not currently exposed by libc.
+ const PROC_ALL_PIDS: u32 = 1;
+diff --git a/src-tauri/src/ui/scene/screenshot_picker/mod.rs b/src-tauri/src/ui/scene/screenshot_picker/mod.rs
+index 956c55a..e9cdd9e 100644
+--- a/src-tauri/src/ui/scene/screenshot_picker/mod.rs
++++ b/src-tauri/src/ui/scene/screenshot_picker/mod.rs
+@@ -1,22 +1,32 @@
+ //! Temporary suppression, independent of whether puppet policy wants a scene.
+-//! The scene reconciliation loop owns this monitor, so no detached worker or
+-//! native observer survives its lifecycle. A future Windows backend implements
+-//! the same `is_active() -> io::Result<bool>` contract.
++//! macOS performs a throttled native scan; Windows consumes state from the
++//! foreground WinEvent hook already owned by the app-focused-app subsystem.
+
+ #[cfg(target_os = "macos")]
+ mod macos;
+ #[cfg(target_os = "macos")]
+ use macos as platform;
+
+-#[cfg(not(target_os = "macos"))]
++#[cfg(target_os = "windows")]
++mod windows;
++#[cfg(target_os = "windows")]
++use windows as platform;
++
++#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+ mod platform {
+     pub(super) const ENABLED: bool = false;
++    pub(super) const SAMPLE_INTERVAL: std::time::Duration = std::time::Duration::ZERO;
+
+     pub(super) fn is_active() -> std::io::Result<bool> {
+         Ok(false)
+     }
+ }
+
++#[cfg(target_os = "windows")]
++pub(super) fn observe_windows_foreground(hwnd: ::windows::Win32::Foundation::HWND) {
++    windows::observe_foreground(hwnd);
++}
++
+ use std::time::{Duration, Instant};
+
+ #[derive(Default)]
+@@ -33,8 +43,8 @@ impl Monitor {
+         }
+         let now = Instant::now();
+         if self.next_sample.is_none_or(|deadline| now >= deadline) {
+-            // Native process inspection stays off the async executor. Only
+-            // one bounded scan is in flight under the scene's mutex.
++            // Potential native inspection stays off the async executor. Only
++            // one bounded sample is in flight under the scene's mutex.
+             let result = tauri::async_runtime::spawn_blocking(platform::is_active).await;
+             let active = match result {
+                 Ok(Ok(active)) => {
+@@ -51,7 +61,7 @@ impl Monitor {
+                 }
+             };
+             let now = Instant::now();
+-            self.next_sample = Some(now + Duration::from_millis(500));
++            self.next_sample = Some(now + platform::SAMPLE_INTERVAL);
+             self.visibility.observe(active, now);
+         }
+         self.visibility.active
+diff --git a/src-tauri/src/ui/scene/screenshot_picker/windows.rs b/src-tauri/src/ui/scene/screenshot_picker/windows.rs
+new file mode 100644
+index 0000000..7c9ef1e
+--- /dev/null
++++ b/src-tauri/src/ui/scene/screenshot_picker/windows.rs
+@@ -0,0 +1,103 @@
++//! Detects the Windows Snipping Tool capture overlay from foreground changes.
++//! The foreground WinEvent hook is owned by `ufa::windows`; this module only
++//! keeps the small piece of state needed by scene reconciliation.
++use std::ffi::OsString;
++use std::io;
++use std::os::windows::ffi::OsStringExt;
++use std::path::Path;
++use std::sync::atomic::{AtomicBool, Ordering};
++
++use windows::Win32::Foundation::{CloseHandle, HWND};
++use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
++use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
++use windows::Win32::UI::WindowsAndMessaging::{
++    GetClassNameW, GetWindowTextW, GetWindowThreadProcessId,
++};
++
++pub(super) const ENABLED: bool = true;
++pub(super) const SAMPLE_INTERVAL: std::time::Duration = std::time::Duration::ZERO;
++
++static ACTIVE: AtomicBool = AtomicBool::new(false);
++
++pub(super) fn is_active() -> io::Result<bool> {
++    Ok(ACTIVE.load(Ordering::Acquire))
++}
++
++pub(super) fn observe_foreground(hwnd: HWND) {
++    ACTIVE.store(is_snipping_tool_overlay(hwnd), Ordering::Release);
++}
++
++fn is_snipping_tool_overlay(hwnd: HWND) -> bool {
++    let class = window_class(hwnd);
++    let title = window_title(hwnd);
++    if !matches_window_identifiers(&class, &title) {
++        return false;
++    }
++
++    process_name(hwnd).is_some_and(|name| name.eq_ignore_ascii_case("SnippingTool.exe"))
++}
++
++fn matches_window_identifiers(class: &str, title: &str) -> bool {
++    class == "XamlWindow" && title == "Snipping Tool Overlay"
++}
++
++fn window_class(hwnd: HWND) -> String {
++    let mut buffer = [0u16; 256];
++    // SAFETY: `buffer` is writable and `hwnd` comes from the WinEvent callback.
++    let length = unsafe { GetClassNameW(hwnd, &mut buffer) };
++    String::from_utf16_lossy(&buffer[..length.max(0) as usize])
++}
++
++fn window_title(hwnd: HWND) -> String {
++    let mut buffer = [0u16; 256];
++    // SAFETY: `buffer` is writable and `hwnd` comes from the WinEvent callback.
++    let length = unsafe { GetWindowTextW(hwnd, &mut buffer) };
++    String::from_utf16_lossy(&buffer[..length.max(0) as usize])
++}
++
++fn process_name(hwnd: HWND) -> Option<String> {
++    let mut pid = 0;
++    // SAFETY: the optional output points to a live local variable.
++    unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
++    if pid == 0 {
++        return None;
++    }
++
++    // SAFETY: the PID was supplied by Windows for the foreground HWND.
++    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
++    if process.is_invalid() {
++        return None;
++    }
++
++    let mut buffer = [0u16; 1024];
++    // SAFETY: `process` is valid and `buffer` is writable.
++    let length = unsafe { GetModuleFileNameExW(process, None, &mut buffer) };
++    // SAFETY: this function owns the process handle returned by OpenProcess.
++    let _ = unsafe { CloseHandle(process) };
++    if length == 0 {
++        return None;
++    }
++
++    let path = OsString::from_wide(&buffer[..length as usize]);
++    Path::new(&path)
++        .file_name()
++        .map(|name| name.to_string_lossy().into_owned())
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn distinguishes_capture_overlay_from_main_snipping_tool_window() {
++        assert!(matches_window_identifiers(
++            "XamlWindow",
++            "Snipping Tool Overlay"
++        ));
++        assert!(!matches_window_identifiers("XamlWindow", "Snipping Tool"));
++        assert!(!matches_window_identifiers(
++            "Tauri Window",
++            "Snipping Tool Overlay"
++        ));
++    }
++}
