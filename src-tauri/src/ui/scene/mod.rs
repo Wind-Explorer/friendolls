@@ -1,3 +1,5 @@
+mod screenshot_picker;
+
 use std::sync::RwLock;
 
 use serde::Deserialize;
@@ -162,11 +164,7 @@ pub fn overlay_fullscreen(
     Ok(())
 }
 
-fn open_window(app_handle: &AppHandle) -> Result<tauri::WebviewWindow, String> {
-    if let Some(window) = app_handle.get_webview_window(WINDOW_LABEL) {
-        return Ok(window);
-    };
-
+fn open_window(app_handle: &AppHandle, visible: bool) -> Result<(), String> {
     let builder = tauri::WebviewWindowBuilder::new(
         app_handle,
         WINDOW_LABEL,
@@ -194,7 +192,9 @@ fn open_window(app_handle: &AppHandle) -> Result<tauri::WebviewWindow, String> {
     let configure = || -> Result<(), tauri::Error> {
         overlay_fullscreen(app_handle, &window)?;
         window.set_ignore_cursor_events(true)?;
-        window.show()?;
+        if visible {
+            window.show()?;
+        }
         Ok(())
     };
     if let Err(error) = configure() {
@@ -204,12 +204,12 @@ fn open_window(app_handle: &AppHandle) -> Result<tauri::WebviewWindow, String> {
     apply_macos_decoration_window_policy(app_handle, WINDOW_LABEL.to_string());
     track_scene_hitboxes(app_handle.clone(), window.clone());
 
-    Ok(window)
+    Ok(())
 }
 
 /// Serializes native create/destroy requests, including destruction acknowledgement.
 #[derive(Default)]
-struct SceneWindow(tokio::sync::Mutex<()>);
+struct SceneWindow(tokio::sync::Mutex<screenshot_picker::Monitor>);
 
 pub(crate) fn is_initialized(handle: &AppHandle) -> bool {
     handle.try_state::<SceneWindow>().is_some()
@@ -220,18 +220,11 @@ pub(crate) async fn reconcile_window(handle: &AppHandle, open: bool) -> Result<(
     let state = handle
         .try_state::<SceneWindow>()
         .ok_or("scene UI has not started")?;
-    let _guard = state.0.lock().await;
-    if open {
-        if handle.get_webview_window(WINDOW_LABEL).is_none() {
-            handle
-                .state::<SceneHitboxes>()
-                .0
-                .write()
-                .map_err(|error| error.to_string())?
-                .clear();
-            open_window(&handle)?;
-        }
-    } else if let Some(window) = handle.get_webview_window(WINDOW_LABEL) {
+    let mut screenshot_picker = state.0.lock().await;
+    if !open {
+        let Some(window) = handle.get_webview_window(WINDOW_LABEL) else {
+            return Ok(());
+        };
         let (sender, receiver) = tokio::sync::oneshot::channel();
         let sender = std::sync::Mutex::new(Some(sender));
         window.on_window_event(move |event| {
@@ -249,13 +242,34 @@ pub(crate) async fn reconcile_window(handle: &AppHandle, open: bool) -> Result<(
             .write()
             .map_err(|error| error.to_string())?
             .clear();
+        return Ok(());
+    }
+
+    // Share serialization with create/destroy: picker dismissal must never reopen
+    // a scene which the puppet visibility policy has closed.
+    let suppressed = screenshot_picker.suppressed().await;
+    let Some(window) = handle.get_webview_window(WINDOW_LABEL) else {
+        handle
+            .state::<SceneHitboxes>()
+            .0
+            .write()
+            .map_err(|error| error.to_string())?
+            .clear();
+        return open_window(handle, !suppressed);
+    };
+    if window.is_visible().map_err(|error| error.to_string())? == suppressed {
+        if suppressed {
+            window.hide()
+        } else {
+            window.show()
+        }
+        .map_err(|error| error.to_string())?;
     }
     Ok(())
 }
 
 pub fn init(app_handle: &AppHandle) {
     app_handle.manage(SceneHitboxes::default());
-    // The existing puppet tick opens the scene only after publishing its snapshot.
     app_handle.manage(SceneWindow::default());
 }
 

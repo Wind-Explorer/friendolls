@@ -13,6 +13,7 @@ dependencies = [
  "getrandom 0.4.3",
  "image",
  "lazy_static",
+ "libc",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
