@@ -1,7 +1,7 @@
 use axum::extract::ws::Message;
+use friendolls_common::{Profile, ServerMessage, profile_bytes};
 use tokio::sync::mpsc;
 use uuid::Uuid;
-use friendolls_common::{Profile, ServerMessage, profile_bytes};
 
 use super::{Client, Clients, verify};
 

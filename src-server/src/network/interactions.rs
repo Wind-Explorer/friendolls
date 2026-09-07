@@ -3,12 +3,12 @@ use std::io::Cursor;
 use axum::extract::ws::Message;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use tokio::sync::mpsc;
-use uuid::Uuid;
 use friendolls_common::{
     InteractionContent, InteractionDeliveryStatus, MAX_IMAGE_DIMENSION,
     MAX_INTERACTION_PAYLOAD_BYTES, ServerMessage, interaction_bytes,
 };
+use tokio::sync::mpsc;
+use uuid::Uuid;
 
 use super::{Clients, are_mutual_friends, verify};
 
@@ -101,8 +101,8 @@ fn payload_is_valid(payload: &str) -> bool {
 mod tests {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use ed25519_dalek::{Signer, SigningKey};
-    use image::{Rgb, RgbImage};
     use friendolls_common::{MAX_TEXT_CHARS, Profile};
+    use image::{Rgb, RgbImage};
 
     use super::*;
     use crate::network::Client;
