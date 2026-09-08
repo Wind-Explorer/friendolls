@@ -8,6 +8,7 @@ use friendolls_common::{
 use futures_util::{SinkExt, StreamExt};
 use tauri::{AppHandle, Manager};
 use tokio::sync::{mpsc, oneshot, watch};
+use tokio::time::{Instant, sleep_until, timeout};
 use tokio_tungstenite::tungstenite::Message;
 
 use super::presence::FriendPresence;
@@ -19,6 +20,45 @@ use crate::friends;
 use crate::interactions;
 use crate::keypair::AppKeypair;
 use crate::remotes::Remote;
+
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+const SETUP_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Probe even when presence suppresses live data. Only the matching pong
+/// acknowledges a probe; unrelated traffic must not hide a broken return path.
+struct Heartbeat {
+    next_check: Instant,
+    sequence: u64,
+    pending: bool,
+}
+
+impl Heartbeat {
+    fn new() -> Self {
+        Self {
+            next_check: Instant::now() + HEARTBEAT_INTERVAL,
+            sequence: 0,
+            pending: false,
+        }
+    }
+
+    async fn next_ping(&mut self) -> Result<Message, &'static str> {
+        sleep_until(self.next_check).await;
+        if self.pending {
+            return Err("server heartbeat timed out");
+        }
+        self.sequence = self.sequence.wrapping_add(1);
+        self.pending = true;
+        self.next_check = Instant::now() + HEARTBEAT_INTERVAL;
+        Ok(Message::Ping(self.sequence.to_be_bytes().to_vec().into()))
+    }
+
+    fn pong(&mut self, payload: &[u8]) {
+        if payload == self.sequence.to_be_bytes() {
+            self.pending = false;
+        }
+    }
+}
 
 pub(super) struct InteractionRequest {
     pub(super) interaction_id: String,
@@ -109,10 +149,11 @@ async fn connect(
         profile_lookups,
         skin_lookups,
     } = inputs;
-    let (socket, _) = tokio_tungstenite::connect_async(url(remote)).await?;
+    let (socket, _) =
+        timeout(SETUP_TIMEOUT, tokio_tungstenite::connect_async(url(remote))).await??;
     let (mut writer, mut reader) = socket.split();
 
-    let challenge = match recv(&mut reader).await? {
+    let challenge = match timeout(SETUP_TIMEOUT, recv(&mut reader)).await?? {
         ServerMessage::Challenge { version, challenge }
             if version == friendolls_common::VERSION =>
         {
@@ -141,7 +182,10 @@ async fn connect(
     )
     .await?;
 
-    if !matches!(recv(&mut reader).await?, ServerMessage::Registered) {
+    if !matches!(
+        timeout(SETUP_TIMEOUT, recv(&mut reader)).await??,
+        ServerMessage::Registered
+    ) {
         return Err("server rejected registration".into());
     }
     cursor_data.borrow_and_update();
@@ -161,6 +205,7 @@ async fn connect(
         ConnectionState::Connected,
     );
 
+    let mut heartbeat = Heartbeat::new();
     let mut pending_interactions = HashMap::new();
     let mut pending_profile_lookups: HashMap<String, (String, oneshot::Sender<Option<String>>)> =
         HashMap::new();
@@ -170,6 +215,9 @@ async fn connect(
     > = HashMap::new();
     loop {
         tokio::select! {
+            ping = heartbeat.next_ping() => {
+                send_frame(&mut writer, ping?).await?;
+            }
             changed = cursor_data.changed() => {
                 changed.map_err(|_| "cursor sender closed")?;
                 let payload = { cursor_data.borrow_and_update().clone() };
@@ -359,7 +407,8 @@ async fn connect(
                     }
                     _ => {}
                 },
-                Message::Ping(data) => writer.send(Message::Pong(data)).await?,
+                Message::Ping(data) => send_frame(&mut writer, Message::Pong(data)).await?,
+                Message::Pong(data) => heartbeat.pong(&data),
                 Message::Close(_) => return Ok(()),
                 _ => {}
             }
@@ -375,9 +424,23 @@ where
     S: futures_util::Sink<Message> + Unpin,
     S::Error: std::error::Error + Send + Sync + 'static,
 {
-    writer
-        .send(Message::Text(serde_json::to_string(message)?.into()))
-        .await?;
+    send_frame(
+        writer,
+        Message::Text(serde_json::to_string(message)?.into()),
+    )
+    .await
+}
+
+async fn send_frame<S>(
+    writer: &mut S,
+    message: Message,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    S: futures_util::Sink<Message> + Unpin,
+    S::Error: std::error::Error + Send + Sync + 'static,
+{
+    // A blocked write must not prevent the session from detecting disconnection.
+    timeout(WRITE_TIMEOUT, writer.send(message)).await??;
     Ok(())
 }
 
@@ -416,6 +479,78 @@ fn url(remote: &Remote) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn idle_connection_times_out_without_pong() {
+        let start = Instant::now();
+        let mut heartbeat = Heartbeat::new();
+        assert!(matches!(
+            heartbeat.next_ping().await.unwrap(),
+            Message::Ping(_)
+        ));
+        assert_eq!(Instant::now() - start, HEARTBEAT_INTERVAL);
+        assert_eq!(
+            heartbeat.next_ping().await.unwrap_err(),
+            "server heartbeat timed out"
+        );
+        assert_eq!(Instant::now() - start, HEARTBEAT_INTERVAL * 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stale_or_unsolicited_pongs_do_not_keep_connection_alive() {
+        let mut heartbeat = Heartbeat::new();
+        let Message::Ping(first) = heartbeat.next_ping().await.unwrap() else {
+            panic!("expected ping");
+        };
+        heartbeat.pong(&first);
+        heartbeat.next_ping().await.unwrap();
+        heartbeat.pong(&first);
+        heartbeat.pong(&[]);
+        assert!(heartbeat.next_ping().await.is_err());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn websocket_automatic_pongs_keep_idle_connection_alive() {
+        use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::Role};
+
+        let (client, server) = tokio::io::duplex(1024);
+        let mut client = WebSocketStream::from_raw_socket(client, Role::Client, None).await;
+        let mut server = WebSocketStream::from_raw_socket(server, Role::Server, None).await;
+        let mut heartbeat = Heartbeat::new();
+        for _ in 0..3 {
+            send_frame(&mut client, heartbeat.next_ping().await.unwrap())
+                .await
+                .unwrap();
+            assert!(matches!(
+                server.next().await.unwrap().unwrap(),
+                Message::Ping(_)
+            ));
+            // Tungstenite queues the server's automatic pong when reading the ping.
+            server.flush().await.unwrap();
+            let Message::Pong(payload) = client.next().await.unwrap().unwrap() else {
+                panic!("expected pong");
+            };
+            heartbeat.pong(&payload);
+        }
+        // Simulate a silent network failure after a previously healthy session.
+        send_frame(&mut client, heartbeat.next_ping().await.unwrap())
+            .await
+            .unwrap();
+        assert!(heartbeat.next_ping().await.is_err());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn blocked_write_times_out() {
+        let mut writer = Box::pin(futures_util::sink::unfold((), |(), _: Message| async {
+            std::future::pending::<Result<(), std::io::Error>>().await
+        }));
+        let start = Instant::now();
+        let error = send_frame(&mut writer, Message::Ping(Vec::new().into()))
+            .await
+            .unwrap_err();
+        assert!(error.is::<tokio::time::error::Elapsed>());
+        assert_eq!(Instant::now() - start, WRITE_TIMEOUT);
+    }
 
     fn remote(address: &str, port: Option<u16>) -> Remote {
         Remote {
