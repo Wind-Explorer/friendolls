@@ -97,3 +97,31 @@ test('limb relaxation has the same speed at 30 and 120 FPS and finishes', () => 
     fast.dispose();
   }
 });
+
+test('broad feet stay above ground throughout a stride and return to rest', () => {
+  const visual = new PuppetVisual('feet');
+  const point = new THREE.Vector3();
+  const restPositions = visual.root.children.map((part) => part.position.clone());
+  try {
+    for (let frame = 0; frame <= 120; frame++) {
+      visual.walkInPlace(0, frame / 120 * Math.PI * 2 / 10);
+      visual.root.updateMatrixWorld(true);
+      visual.root.traverse((part) => {
+        if (!(part instanceof THREE.Mesh)) return;
+        const vertices = part.geometry.attributes.position;
+        for (let i = 0; i < vertices.count; i++) {
+          point.fromBufferAttribute(vertices, i).applyMatrix4(part.matrixWorld);
+          assert.ok(point.y >= -1e-6, `vertex below ground: ${point.y}`);
+        }
+      });
+    }
+    visual.walkInPlace(0, 0.1);
+    for (let frame = 0; frame < 120; frame++) visual.pause(1 / 60);
+    assert.equal(visual.pause(0), false);
+    visual.root.children.forEach((part, index) => {
+      assert.deepEqual(part.position, restPositions[index]);
+    });
+  } finally {
+    visual.dispose();
+  }
+});

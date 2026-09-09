@@ -110,45 +110,48 @@ function createRig(): PuppetRig {
   root.rotation.y = CAMERA_FACING_ROTATION_Y;
   const material = new THREE.MeshStandardMaterial();
 
-  const body = new THREE.Mesh(new THREE.BoxGeometry(16, 24, 8), material);
-  body.position.y = 36;
+  const body = new THREE.Mesh(createTaperedBox(18, 20, 12, 0.8), material);
+  body.position.y = 26;
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(16, 16, 16), material);
-  head.position.y = 56;
+  const head = new THREE.Mesh(createTaperedBox(30, 28, 24, 0.92), material);
+  head.position.y = 50;
 
   const { pivot: leftArm, mesh: leftArmMesh } = createLimbPivot(
     -12,
-    48,
-    8,
-    24,
+    34,
+    7,
+    16,
     8,
     material,
   );
   const { pivot: rightArm, mesh: rightArmMesh } = createLimbPivot(
     12,
-    48,
-    8,
-    24,
+    34,
+    7,
+    16,
     8,
     material,
   );
   const { pivot: leftLeg, mesh: leftLegMesh } = createLimbPivot(
     -4,
-    24,
+    16,
     8,
-    24,
-    8,
+    16,
+    10,
     material,
   );
   const { pivot: rightLeg, mesh: rightLegMesh } = createLimbPivot(
     4,
-    24,
+    16,
     8,
-    24,
-    8,
+    16,
+    10,
     material,
   );
 
+  // Splayed shoulders keep the short hands clear of the wider torso.
+  leftArm.rotation.z = -0.16;
+  rightArm.rotation.z = 0.16;
   root.add(body, head, leftArm, rightArm, leftLeg, rightLeg);
 
   return {
@@ -178,11 +181,32 @@ function createLimbPivot(
   pivot.position.set(x, y, 0);
 
   const limb = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, depth),
+    createTaperedBox(width, height, depth, 0.85),
     material,
   );
   limb.position.y = -height / 2;
   pivot.add(limb);
 
   return { pivot, mesh: limb };
+}
+
+/** Keep BoxGeometry's six four-vertex faces so the existing skin atlas still fits.
+ * The narrower upper end gives the torso shoulders and the limbs chunky ends.
+ */
+function createTaperedBox(
+  width: number,
+  height: number,
+  depth: number,
+  topScale: number,
+) {
+  const geometry = new THREE.BoxGeometry(width, height, depth);
+  const positions = geometry.attributes.position;
+  for (let i = 0; i < positions.count; i++) {
+    if (positions.getY(i) > 0) {
+      positions.setX(i, positions.getX(i) * topScale);
+      positions.setZ(i, positions.getZ(i) * topScale);
+    }
+  }
+  geometry.computeVertexNormals();
+  return geometry;
 }

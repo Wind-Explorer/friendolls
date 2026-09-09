@@ -11,10 +11,12 @@ export class PuppetAnimation {
   private readonly movementDelta = new THREE.Vector3();
   private readonly idleRotationY: number;
   private idleTargetRotationY: number;
+  private readonly legRestY: number;
   private hasSmoothedPosition = false;
   private wasMoving = false;
 
   constructor(private readonly rig: PuppetRig) {
+    this.legRestY = rig.leftLeg.position.y;
     this.idleRotationY = rig.root.rotation.y;
     this.idleTargetRotationY = this.idleRotationY;
   }
@@ -77,6 +79,7 @@ export class PuppetAnimation {
       if (Math.abs(limb.rotation.x) <= ANGLE_EPSILON) limb.rotation.x = 0;
       else active = true;
     }
+    this.placeFeet();
     return active;
   }
 
@@ -119,10 +122,27 @@ export class PuppetAnimation {
   }
 
   private animateWalkCycle(elapsedSeconds: number) {
-    const swing = Math.sin(elapsedSeconds * 8) * 0.5;
-    this.rig.leftLeg.rotation.x = swing * 2;
-    this.rig.rightLeg.rotation.x = -swing * 2;
-    this.rig.leftArm.rotation.x = -swing * 2;
-    this.rig.rightArm.rotation.x = swing * 2;
+    const swing = Math.sin(elapsedSeconds * 10);
+    this.rig.leftLeg.rotation.x = swing * 0.45;
+    this.rig.rightLeg.rotation.x = -swing * 0.45;
+    this.rig.leftArm.rotation.x = -swing * 0.35;
+    this.rig.rightArm.rotation.x = swing * 0.35;
+    this.placeFeet();
+  }
+
+  // Lift each short leg enough to keep its broad foot from clipping the ground.
+  // Recompute while settling too, so stopping restores the exact standing pose.
+  private placeFeet() {
+    for (const [pivot, mesh] of [
+      [this.rig.leftLeg, this.rig.leftLegMesh],
+      [this.rig.rightLeg, this.rig.rightLegMesh],
+    ] as const) {
+      const angle = pivot.rotation.x;
+      const { height, depth } = mesh.geometry.parameters;
+      pivot.position.y = this.legRestY + Math.max(
+        0,
+        height * (Math.cos(angle) - 1) + depth / 2 * Math.abs(Math.sin(angle)),
+      );
+    }
   }
 }
