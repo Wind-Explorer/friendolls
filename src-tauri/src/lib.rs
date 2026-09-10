@@ -1,3 +1,4 @@
+mod activity;
 mod application;
 mod cursor;
 mod db;
@@ -27,6 +28,7 @@ async fn launch_app(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error:
     keypair::init(handle).await?;
     interactions::init(handle);
     cursor::init(handle);
+    activity::init(handle);
     network::init(handle).await?;
     ufa::init(handle);
     puppet::init(handle)?;
@@ -136,8 +138,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             network::NetworkStatusChanged,
             network::FriendStatusesChanged,
             cursor::CursorPositionChanged,
-            ufa::ForegroundAppChanged,
-            ufa::FriendForegroundAppChanged,
+            activity::ActivitiesChanged,
             interactions::FriendInteractionReceived,
             puppet::PuppetStatesChanged,
             scene::SceneConfigurationChanged,

@@ -10,7 +10,10 @@ use axum::routing::get;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use friendolls_common::{ClientMessage, Profile, ServerMessage, message_bytes, register_bytes};
+use friendolls_common::{
+    ClientMessage, MAX_LIVE_DATA_PAYLOAD_BYTES, Profile, ServerMessage, message_bytes,
+    register_bytes,
+};
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
@@ -273,6 +276,10 @@ async fn relay_live_data(
     payload: String,
     signature: &str,
 ) -> bool {
+    if payload.len() > MAX_LIVE_DATA_PAYLOAD_BYTES {
+        return false;
+    }
+
     let clients = clients.lock().await;
     let Some(source) = clients
         .get(public_key)
@@ -625,6 +632,22 @@ mod tests {
                 connection_id,
                 "tampered".to_owned(),
                 &signature,
+            )
+            .await
+        );
+        let oversized_payload = "x".repeat(MAX_LIVE_DATA_PAYLOAD_BYTES + 1);
+        let oversized_signature = URL_SAFE_NO_PAD.encode(
+            signing_key
+                .sign(&message_bytes(&oversized_payload))
+                .to_bytes(),
+        );
+        assert!(
+            !relay_live_data(
+                &clients,
+                &public_key,
+                connection_id,
+                oversized_payload,
+                &oversized_signature,
             )
             .await
         );

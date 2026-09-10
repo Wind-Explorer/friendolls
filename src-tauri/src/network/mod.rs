@@ -58,7 +58,7 @@ pub struct FriendStatusesChanged {
 struct Connection {
     remote: Remote,
     cursor_sender: watch::Sender<Option<String>>,
-    foreground_app_sender: watch::Sender<Option<String>>,
+    activity_sender: watch::Sender<Option<String>>,
     interaction_sender: mpsc::Sender<InteractionRequest>,
     profile_lookup_sender: mpsc::Sender<ProfileLookupRequest>,
     skin_lookup_sender: mpsc::Sender<SkinLookupRequest>,
@@ -85,7 +85,7 @@ pub struct Network {
     next_generation: AtomicU64,
     live_session_id: String,
     next_cursor_sequence: AtomicU64,
-    next_foreground_app_sequence: AtomicU64,
+    next_activity_sequence: AtomicU64,
     received_sequences: SequenceTracker,
 }
 
@@ -109,9 +109,7 @@ impl Network {
         };
         let sequence = match data.kind() {
             LiveDataKind::Cursor => self.next_cursor_sequence.fetch_add(1, Ordering::Relaxed),
-            LiveDataKind::ForegroundApp => self
-                .next_foreground_app_sequence
-                .fetch_add(1, Ordering::Relaxed),
+            LiveDataKind::Activity => self.next_activity_sequence.fetch_add(1, Ordering::Relaxed),
         };
         let envelope = LiveDataEnvelope {
             session_id: self.live_session_id.clone(),
@@ -122,6 +120,10 @@ impl Network {
             eprintln!("failed to serialize live data");
             return;
         };
+        if payload.len() > friendolls_common::MAX_LIVE_DATA_PAYLOAD_BYTES {
+            eprintln!("live data exceeds the transport limit");
+            return;
+        }
         let Ok(connections) = self.connections.lock() else {
             eprintln!("failed to lock remote connections for live data");
             return;
@@ -134,9 +136,9 @@ impl Network {
                 LiveDataKind::Cursor => {
                     connection.cursor_sender.send_replace(Some(payload.clone()));
                 }
-                LiveDataKind::ForegroundApp => {
+                LiveDataKind::Activity => {
                     connection
-                        .foreground_app_sender
+                        .activity_sender
                         .send_replace(Some(payload.clone()));
                 }
             }
@@ -185,8 +187,8 @@ impl Network {
             LiveData::Cursor { positions } => {
                 crate::cursor::emit_position(handle, friend_id, positions);
             }
-            LiveData::ForegroundApp { meta } => {
-                crate::ufa::emit_friend_app(handle, friend_id, meta);
+            LiveData::Activities { activities } => {
+                crate::activity::update_friend(handle, friend_id, activities);
             }
         }
     }
@@ -383,7 +385,7 @@ impl Network {
 
             let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
             let (cursor_sender, cursor_receiver) = watch::channel(None);
-            let (foreground_app_sender, foreground_app_receiver) = watch::channel(None);
+            let (activity_sender, activity_receiver) = watch::channel(None);
             let (interaction_sender, interaction_receiver) = mpsc::channel(16);
             let (profile_lookup_sender, profile_lookup_receiver) = mpsc::channel(16);
             let (skin_lookup_sender, skin_lookup_receiver) = mpsc::channel(16);
@@ -404,7 +406,7 @@ impl Network {
                     friends: self.friends.subscribe(),
                     keypair: self.keypair.clone(),
                     cursor_data: cursor_receiver,
-                    foreground_app_data: foreground_app_receiver,
+                    activity_data: activity_receiver,
                     interactions: interaction_receiver,
                     profile_lookups: profile_lookup_receiver,
                     skin_lookups: skin_lookup_receiver,
@@ -415,7 +417,7 @@ impl Network {
                 Connection {
                     remote,
                     cursor_sender,
-                    foreground_app_sender,
+                    activity_sender,
                     interaction_sender,
                     profile_lookup_sender,
                     skin_lookup_sender,
@@ -453,7 +455,7 @@ pub async fn init(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         next_generation: AtomicU64::new(1),
         live_session_id: uuid::Uuid::new_v4().to_string(),
         next_cursor_sequence: AtomicU64::new(1),
-        next_foreground_app_sequence: AtomicU64::new(1),
+        next_activity_sequence: AtomicU64::new(1),
         received_sequences: SequenceTracker::default(),
     };
     handle.manage(network);
@@ -535,12 +537,7 @@ fn apply_friend_presence_change(
     match result {
         Ok(Some(change)) => {
             crate::cursor::remove_positions(handle, &change.went_offline);
-            if let Err(error) = handle
-                .state::<crate::ufa::ForegroundAppState>()
-                .remove(&change.went_offline)
-            {
-                eprintln!("failed to remove offline foreground apps: {error}");
-            }
+            crate::activity::remove_users(handle, &change.went_offline);
             if change.route_added
                 && let Err(error) = crate::live_data::publish_current(handle)
             {

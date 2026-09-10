@@ -15,6 +15,7 @@
   import SceneInteractionBubble from "./popovers/interaction-bubble.svelte";
   import SceneUserPopoverContent from "./popovers/user-interaction.svelte";
   import { messages } from "$lib/i18n";
+  import type { Activity } from "$lib/bindings";
 
   let selectedUserId = $state<string | null>(null);
   let lockedPopoverUserId = $state<string | null>(null);
@@ -69,6 +70,21 @@
         );
   }
 
+  function orderedActivities(
+    activities: Map<string, Activity> | undefined,
+  ): Activity[] {
+    if (!activities) return [];
+    return [...activities]
+      .sort(([leftSource], [rightSource]) =>
+        leftSource.localeCompare(rightSource),
+      )
+      .map(([, activity]) => activity);
+  }
+
+  function firstActivityIcon(activities: Activity[]): string | undefined {
+    return activities.find((activity) => activity.icon)?.icon ?? undefined;
+  }
+
   function dismissInteraction(interactionId: string) {
     incomingInteraction.update((current) =>
       current?.interactionId === interactionId ? null : current,
@@ -113,7 +129,9 @@
     {#each $puppetStates as puppet, index (puppet.id)}
       {@const userId = puppet.id}
       {@const bounds = puppetBoundsById.get(userId)}
-      {@const foregroundApp = $liveMetadata.foregroundApps.get(userId)}
+      {@const activities = $liveMetadata.activities.get(userId)}
+      {@const userActivities = orderedActivities(activities)}
+      {@const activityIcon = firstActivityIcon(userActivities)}
       {@const popoverId = `scene-user-${index}`}
       {@const interaction =
         $incomingInteraction?.friendId === userId ? $incomingInteraction : null}
@@ -137,9 +155,9 @@
             />
           {/if}
 
-          {#if foregroundApp?.ico}
+          {#if activityIcon}
             <img
-              src={`data:image/png;base64,${foregroundApp.ico}`}
+              src={`data:image/png;base64,${activityIcon}`}
               alt=""
               class="pointer-events-none absolute -top-5 left-1/2 size-4 -translate-x-1/2 object-contain"
               style:opacity={$sceneConfiguration.puppetOpacity}
@@ -168,7 +186,7 @@
               titleId={`${popoverId}-title`}
               {userId}
               isLocal={userId === $liveMetadata.localId}
-              {foregroundApp}
+              activities={userActivities}
               onModeChange={(active) =>
                 (lockedPopoverUserId = active ? userId : null)}
               onDismiss={dismissPopover}

@@ -2,47 +2,48 @@ import { writable } from "svelte/store";
 import {
   commands,
   events,
-  type AppMeta,
+  type Activity,
   type CursorPositions,
 } from "$lib/bindings";
 
 export type LiveMetadata = {
   localId: string;
   cursorPositions: Partial<Record<string, CursorPositions>>;
-  foregroundApps: Map<string, AppMeta>;
+  activities: Map<string, Map<string, Activity>>;
 };
 
 export const liveMetadata = writable<LiveMetadata>({
   localId: "",
   cursorPositions: {},
-  foregroundApps: new Map(),
+  activities: new Map(),
 });
 export const liveMetadataListenerError = writable("");
-
-export function retainOnlineForegroundApps(onlineFriendIds: Set<string>) {
-  liveMetadata.update((metadata) => ({
-    ...metadata,
-    foregroundApps: new Map(
-      [...metadata.foregroundApps].filter(
-        ([userId]) =>
-          userId === metadata.localId || onlineFriendIds.has(userId),
-      ),
-    ),
-  }));
-}
 
 export async function initLiveMetadataListeners() {
   let localId = "";
   let initializing = true;
   let pendingCursorPositions: LiveMetadata["cursorPositions"] | null = null;
-  let pendingLocalForegroundApp: AppMeta | null = null;
-  const pendingFriendForegroundApps = new Map<string, AppMeta>();
+  const pendingActivities = new Map<string, Map<string, Activity>>();
 
-  const updateForegroundApp = (userId: string, meta: AppMeta) => {
-    liveMetadata.update((current) => ({
-      ...current,
-      foregroundApps: new Map(current.foregroundApps).set(userId, meta),
-    }));
+  const activityMap = (
+    activities: Partial<Record<string, Activity>>,
+  ): Map<string, Activity> =>
+    new Map(
+      Object.entries(activities).filter(
+        (entry): entry is [string, Activity] => entry[1] !== undefined,
+      ),
+    );
+
+  const replaceActivities = (
+    userId: string,
+    userActivities: Map<string, Activity>,
+  ) => {
+    liveMetadata.update((current) => {
+      const activities = new Map(current.activities);
+      if (userActivities.size > 0) activities.set(userId, userActivities);
+      else activities.delete(userId);
+      return { ...current, activities };
+    });
   };
 
   const applyPendingUpdates = () => {
@@ -51,17 +52,13 @@ export async function initLiveMetadataListeners() {
       liveMetadata.update((current) => ({ ...current, cursorPositions }));
       pendingCursorPositions = null;
     }
-    if (localId && pendingLocalForegroundApp) {
-      updateForegroundApp(localId, pendingLocalForegroundApp);
-      pendingLocalForegroundApp = null;
-    }
-    pendingFriendForegroundApps.forEach((meta, friendId) => {
-      updateForegroundApp(friendId, meta);
+    pendingActivities.forEach((activities, userId) => {
+      replaceActivities(userId, activities);
     });
-    pendingFriendForegroundApps.clear();
+    pendingActivities.clear();
   };
 
-  const unlisteners = await Promise.all([
+  const subscriptions = await Promise.allSettled([
     events.cursorPositionChanged.listen((event) => {
       if (initializing) {
         pendingCursorPositions = event.payload.positions;
@@ -72,24 +69,24 @@ export async function initLiveMetadataListeners() {
         cursorPositions: event.payload.positions,
       }));
     }),
-    events.foregroundAppChanged.listen((event) => {
-      if (!initializing && localId) {
-        updateForegroundApp(localId, event.payload.meta);
-      } else {
-        pendingLocalForegroundApp = event.payload.meta;
-      }
-    }),
-    events.friendForegroundAppChanged.listen((event) => {
+    events.activitiesChanged.listen((event) => {
+      const activities = activityMap(event.payload.activities);
       if (initializing) {
-        pendingFriendForegroundApps.set(
-          event.payload.friendId,
-          event.payload.meta,
-        );
+        pendingActivities.set(event.payload.userId, activities);
       } else {
-        updateForegroundApp(event.payload.friendId, event.payload.meta);
+        replaceActivities(event.payload.userId, activities);
       }
     }),
   ]);
+  const unlisteners = subscriptions.flatMap((subscription) =>
+    subscription.status === "fulfilled" ? [subscription.value] : [],
+  );
+  for (const subscription of subscriptions) {
+    if (subscription.status === "rejected") {
+      unlisteners.forEach((unlisten) => unlisten());
+      throw subscription.reason;
+    }
+  }
 
   try {
     const [snapshot] = await Promise.all([
@@ -98,14 +95,20 @@ export async function initLiveMetadataListeners() {
         localId = resolvedLocalId;
       }),
     ]);
-    const foregroundApps = new Map<string, AppMeta>();
-    Object.entries(snapshot.foregroundApps).forEach(([userId, meta]) => {
-      if (meta) foregroundApps.set(userId, meta);
-    });
+    const activities = new Map<string, Map<string, Activity>>();
+    Object.entries(snapshot.activities).forEach(
+      ([userId, sourceActivities]) => {
+        if (!sourceActivities) return;
+        const userActivities = activityMap(sourceActivities);
+        if (userActivities.size > 0) {
+          activities.set(userId, userActivities);
+        }
+      },
+    );
     liveMetadata.set({
       localId,
       cursorPositions: snapshot.cursorPositions,
-      foregroundApps,
+      activities,
     });
     initializing = false;
     applyPendingUpdates();

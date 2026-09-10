@@ -9,7 +9,7 @@
       ...new Set([
         $liveMetadata.localId,
         ...Object.keys($liveMetadata.cursorPositions),
-        ...$liveMetadata.foregroundApps.keys(),
+        ...$liveMetadata.activities.keys(),
       ]),
     ].filter(Boolean);
   }
@@ -29,7 +29,7 @@
   {:else}
     {#each liveUserIds() as userId (userId)}
       {@const cursor = $liveMetadata.cursorPositions[userId]}
-      {@const foregroundApp = $liveMetadata.foregroundApps.get(userId)}
+      {@const activities = $liveMetadata.activities.get(userId)}
       <article>
         <h2>{userId === $liveMetadata.localId ? "Local user" : "Remote user"}</h2>
         <p title={userId}>ID: {compactId(userId)}</p>
@@ -42,20 +42,25 @@
           <p>Waiting for cursor data...</p>
         {/if}
 
-        <h3>Foreground app</h3>
-        {#if foregroundApp}
-          {#if foregroundApp.ico}
-            <img
-              src={`data:image/png;base64,${foregroundApp.ico}`}
-              alt=""
-              width="64"
-              height="64"
-            />
-          {/if}
-          <p>Localized name: {foregroundApp.local ?? "Unavailable"}</p>
-          <p>Executable name: {foregroundApp.unlocal ?? "Unavailable"}</p>
+        <h3>Activities</h3>
+        {#if activities}
+          {#each activities as [source, activity]}
+            <section>
+              <h4>{source} ({activity.kind})</h4>
+              {#if activity.icon}
+                <img
+                  src={`data:image/png;base64,${activity.icon}`}
+                  alt=""
+                  width="64"
+                  height="64"
+                />
+              {/if}
+              <p>Name: {activity.name ?? "Unavailable"}</p>
+              <p>Details: {activity.details ?? "Unavailable"}</p>
+            </section>
+          {/each}
         {:else}
-          <p>Waiting for foreground app data...</p>
+          <p>Waiting for activity data...</p>
         {/if}
       </article>
     {/each}

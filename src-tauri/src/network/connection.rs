@@ -85,7 +85,7 @@ pub(super) struct ConnectionInputs {
     pub(super) friends: watch::Receiver<Vec<String>>,
     pub(super) keypair: AppKeypair,
     pub(super) cursor_data: watch::Receiver<Option<String>>,
-    pub(super) foreground_app_data: watch::Receiver<Option<String>>,
+    pub(super) activity_data: watch::Receiver<Option<String>>,
     pub(super) interactions: mpsc::Receiver<InteractionRequest>,
     pub(super) profile_lookups: mpsc::Receiver<ProfileLookupRequest>,
     pub(super) skin_lookups: mpsc::Receiver<SkinLookupRequest>,
@@ -144,7 +144,7 @@ async fn connect(
         friends,
         keypair,
         cursor_data,
-        foreground_app_data,
+        activity_data,
         interactions: active_outgoing,
         profile_lookups,
         skin_lookups,
@@ -189,7 +189,7 @@ async fn connect(
         return Err("server rejected registration".into());
     }
     cursor_data.borrow_and_update();
-    foreground_app_data.borrow_and_update();
+    activity_data.borrow_and_update();
     while let Ok(request) = active_outgoing.try_recv() {
         let _ = request
             .response
@@ -230,9 +230,9 @@ async fn connect(
                     }).await?;
                 }
             }
-            changed = foreground_app_data.changed() => {
-                changed.map_err(|_| "foreground-app sender closed")?;
-                let payload = { foreground_app_data.borrow_and_update().clone() };
+            changed = activity_data.changed() => {
+                changed.map_err(|_| "activity sender closed")?;
+                let payload = { activity_data.borrow_and_update().clone() };
                 if let Some(payload) = payload
                     && friend_presence.has_online_friends(&remote.id)?
                 {

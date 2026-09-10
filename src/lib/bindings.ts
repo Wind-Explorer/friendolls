@@ -107,9 +107,8 @@ async updateSceneHitboxes(hitboxes: SceneHitbox[]) : Promise<null> {
 
 
 export const events = __makeEvents__<{
+activitiesChanged: ActivitiesChanged,
 cursorPositionChanged: CursorPositionChanged,
-foregroundAppChanged: ForegroundAppChanged,
-friendForegroundAppChanged: FriendForegroundAppChanged,
 friendInteractionReceived: FriendInteractionReceived,
 friendStatusesChanged: FriendStatusesChanged,
 friendsChanged: FriendsChanged,
@@ -120,9 +119,8 @@ puppetStatesChanged: PuppetStatesChanged,
 remotesChanged: RemotesChanged,
 sceneConfigurationChanged: SceneConfigurationChanged
 }>({
+activitiesChanged: "activities-changed",
 cursorPositionChanged: "cursor-position-changed",
-foregroundAppChanged: "foreground-app-changed",
-friendForegroundAppChanged: "friend-foreground-app-changed",
 friendInteractionReceived: "friend-interaction-received",
 friendStatusesChanged: "friend-statuses-changed",
 friendsChanged: "friends-changed",
@@ -140,10 +138,12 @@ sceneConfigurationChanged: "scene-configuration-changed"
 
 /** user-defined types **/
 
+export type ActivitiesChanged = { userId: string; activities: Partial<{ [key in string]: Activity }> }
 /**
- * Metadata for the currently active application, including localized and unlocalized names, and an optional base64-encoded icon.
+ * Provider-neutral rich presence data for one activity source.
  */
-export type AppMeta = { local: string | null; unlocal: string | null; ico: string | null }
+export type Activity = { kind: ActivityKind; name: string | null; details: string | null; icon: string | null }
+export type ActivityKind = "application" | "listening" | "watching" | "playing" | "custom"
 export type ConnectionState = "connecting" | "connected" | "disconnected"
 export type ConnectionStatus = { remoteId: string; address: string; name: string | null; state: ConnectionState }
 export type CursorPosition = { x: number; y: number }
@@ -157,18 +157,16 @@ raw: CursorPosition;
  * Cursor coordinates normalized to the source monitor for scale-independent projection.
  */
 mapped: CursorPosition }
-export type ForegroundAppChanged = { meta: AppMeta }
 /**
  * A configured public-key relationship with optional cached remote metadata.
  * The display name remains absent until learned from a signed remote profile.
  */
 export type Friend = { id: string; displayName: string | null; skinHash: string | null }
-export type FriendForegroundAppChanged = { friendId: string; meta: AppMeta }
 export type FriendInteractionReceived = { interactionId: string; friendId: string; content: InteractionContent }
 export type FriendStatusesChanged = { friendIds: string[] }
 export type FriendsChanged = { friends: Friend[] }
 export type InteractionContent = { type: "text"; text: string } | { type: "wave" } | { type: "image"; mediaType: string; data: string }
-export type LiveDataSnapshot = { cursorPositions: Partial<{ [key in string]: CursorPositions }>; foregroundApps: Partial<{ [key in string]: AppMeta }> }
+export type LiveDataSnapshot = { cursorPositions: Partial<{ [key in string]: CursorPositions }>; activities: Partial<{ [key in string]: Partial<{ [key in string]: Activity }> }> }
 export type LocaleChanged = { preference: string; locale: string }
 export type NetworkStatusChanged = { statuses: ConnectionStatus[] }
 export type ProfileChanged = { profile: User }

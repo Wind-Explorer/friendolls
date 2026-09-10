@@ -5,13 +5,13 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager};
 
+use crate::activity::Activities;
 use crate::cursor::CursorPositions;
-use crate::ufa::AppMeta;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum LiveDataKind {
     Cursor,
-    ForegroundApp,
+    Activity,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,14 +33,14 @@ impl LiveDataEnvelope {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LiveData {
     Cursor { positions: CursorPositions },
-    ForegroundApp { meta: AppMeta },
+    Activities { activities: Activities },
 }
 
 impl LiveData {
     pub(crate) fn kind(&self) -> LiveDataKind {
         match self {
             Self::Cursor { .. } => LiveDataKind::Cursor,
-            Self::ForegroundApp { .. } => LiveDataKind::ForegroundApp,
+            Self::Activities { .. } => LiveDataKind::Activity,
         }
     }
 }
@@ -49,7 +49,7 @@ impl LiveData {
 #[serde(rename_all = "camelCase")]
 pub struct LiveDataSnapshot {
     pub cursor_positions: HashMap<String, CursorPositions>,
-    pub foreground_apps: HashMap<String, AppMeta>,
+    pub activities: HashMap<String, Activities>,
 }
 
 #[tauri::command]
@@ -57,8 +57,8 @@ pub struct LiveDataSnapshot {
 pub fn list_live_data(handle: AppHandle) -> Result<LiveDataSnapshot, String> {
     Ok(LiveDataSnapshot {
         cursor_positions: handle.state::<crate::cursor::CursorState>().snapshot()?,
-        foreground_apps: handle
-            .state::<crate::ufa::ForegroundAppState>()
+        activities: handle
+            .state::<crate::activity::ActivityState>()
             .snapshot()?,
     })
 }
@@ -73,11 +73,11 @@ pub(crate) fn publish_current(handle: &AppHandle) -> Result<(), String> {
     if let Some(positions) = handle.state::<crate::cursor::CursorState>().get(&user_id)? {
         network.send_live_data(LiveData::Cursor { positions });
     }
-    if let Some(meta) = handle
-        .state::<crate::ufa::ForegroundAppState>()
+    if let Some(activities) = handle
+        .state::<crate::activity::ActivityState>()
         .get(&user_id)?
     {
-        network.send_live_data(LiveData::ForegroundApp { meta });
+        network.send_live_data(LiveData::Activities { activities });
     }
     Ok(())
 }

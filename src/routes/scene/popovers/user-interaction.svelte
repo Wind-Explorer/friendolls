@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
     commands,
-    type AppMeta,
+    type Activity,
     type InteractionContent,
   } from "$lib/bindings";
   import { friendName, friends } from "$lib/listeners/friends";
@@ -12,7 +12,7 @@
     titleId: string;
     userId: string;
     isLocal: boolean;
-    foregroundApp?: AppMeta;
+    activities: Activity[];
     onModeChange: (active: boolean) => void;
     onDismiss: () => void;
     onSent: () => void;
@@ -22,7 +22,7 @@
     titleId,
     userId,
     isLocal,
-    foregroundApp,
+    activities,
     onModeChange,
     onDismiss,
     onSent,
@@ -125,27 +125,33 @@
 
     <section>
       <h3 class="text-xs text-base-content/50">{$messages.scene_currently_enjoying()}</h3>
-      <div class="mt-1 flex min-w-0 items-center gap-2">
-        {#if foregroundApp?.ico}
-          <img
-            src={`data:image/png;base64,${foregroundApp.ico}`}
-            alt=""
-            class="size-6 shrink-0 object-contain"
-          />
-        {/if}
-        <div class="min-w-0">
-          <p class="truncate text-sm">
-            {foregroundApp?.local ??
-              foregroundApp?.unlocal ??
-              $messages.scene_waiting_data()}
-          </p>
-          {#if foregroundApp?.local && foregroundApp.unlocal}
-            <p class="truncate text-xs text-base-content/50">
-              {foregroundApp.unlocal}
-            </p>
-          {/if}
+      {#if activities.length > 0}
+        <div class="mt-1 grid gap-2">
+          {#each activities as activity}
+            <div class="flex min-w-0 items-center gap-2">
+              {#if activity.icon}
+                <img
+                  src={`data:image/png;base64,${activity.icon}`}
+                  alt=""
+                  class="size-6 shrink-0 object-contain"
+                />
+              {/if}
+              <div class="min-w-0">
+                <p class="truncate text-sm">
+                  {activity.name ?? $messages.scene_waiting_data()}
+                </p>
+                {#if activity.details}
+                  <p class="truncate text-xs text-base-content/50">
+                    {activity.details}
+                  </p>
+                {/if}
+              </div>
+            </div>
+          {/each}
         </div>
-      </div>
+      {:else}
+        <p class="mt-1 text-sm">{$messages.scene_waiting_data()}</p>
+      {/if}
     </section>
 
     {#if !isLocal}
